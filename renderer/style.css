@@ -506,3 +506,9 @@ label.check input { width: auto; }
 .movie-date { max-width: 220px; }
 .who-list { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 8px; }
 .who-list label.check { margin-top: 0; }
+.tmdb-credit { margin: 12px 0 0; font-size: 11px; color: var(--muted); opacity: .8; }
+.tmdb-credit b {
+  padding: 1px 6px; border-radius: 4px; color: #0d253f; letter-spacing: .05em;
+  background: linear-gradient(90deg, #90cea1, #01b4e4);
+}
+#movie-who-extra { width: 100%; max-width: 420px; }
