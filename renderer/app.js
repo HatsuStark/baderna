@@ -16,6 +16,13 @@ const ROSTER_STALE_MS = 15000;
 
 const AUDIO_CONSTRAINTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
+// Tela vai em mesh também: quem compartilha manda uma cópia pra cada um.
+const SHARE_PRESETS = {
+  '720p30': { width: 1280, height: 720, frameRate: 30, maxBitrate: 2_500_000 },
+  '1080p30': { width: 1920, height: 1080, frameRate: 30, maxBitrate: 4_500_000 },
+  '1080p60': { width: 1920, height: 1080, frameRate: 60, maxBitrate: 8_000_000 },
+};
+
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -39,6 +46,7 @@ const state = {
   rafId: 0,
   preview: null,      // teste de microfone no lobby: { stream, ctx, raf }
   previewToken: 0,
+  screen: null,       // minha tela compartilhada: { stream, preset, mode }
 };
 
 // ---------- PeerJS helpers ----------
@@ -155,6 +163,7 @@ async function leave() {
 
 async function teardown() {
   state.leaving = true;
+  stopShare();
   for (const id of [...state.members.keys()]) removeMember(id);
   destroyPeer(state.beacon);
   destroyPeer(state.mainPeer);
@@ -169,6 +178,8 @@ async function teardown() {
     roster: new Map(), selfLi: null, audioCtx: null, rafId: 0,
   });
   $('members').replaceChildren();
+  $('stage').replaceChildren();
+  $('stage').hidden = true;
 }
 
 // ---------- Host ----------
@@ -245,8 +256,14 @@ function wireMainPeer() {
   });
 
   peer.on('call', (call) => {
+    const member = upsertMember(call.peer, {});
+    if (call.metadata?.kind === 'screen') {
+      call.answer(); // só recebe
+      attachScreenIn(member, call);
+      return;
+    }
     call.answer(state.localStream);
-    attachCall(upsertMember(call.peer, {}), call);
+    attachCall(member, call);
   });
 
   peer.on('disconnected', () => {
@@ -276,7 +293,11 @@ function upsertMember(id, { name, seq, muted }) {
     const audio = new Audio();
     audio.autoplay = true;
     applySink(audio);
-    m = { id, name: '…', seq: Infinity, muted: false, conn: null, call: null, audio, iceTimer: 0, li: null };
+    m = {
+      id, name: '…', seq: Infinity, muted: false, conn: null, call: null, audio, iceTimer: 0, li: null,
+      screenIn: null,  // tela dele chegando pra mim
+      screenOut: null, // minha tela indo pra ele
+    };
     m.li = createTile(m);
     state.members.set(id, m);
     $('members').append(m.li);
@@ -293,7 +314,11 @@ function attachConn(member, conn) {
   member.conn = conn;
   conn.on('data', (msg) => handleMessage(member, msg));
   conn.on('close', () => removeMember(member.id));
-  conn.on('open', () => watchIce(member, conn.peerConnection));
+  conn.on('open', () => {
+    watchIce(member, conn.peerConnection);
+    // Quem chega depois também recebe a tela que já está rolando.
+    if (state.screen) sendScreenTo(member);
+  });
 }
 
 function attachCall(member, call) {
@@ -327,6 +352,9 @@ function handleMessage(member, msg) {
       state.hostId = msg.hostId;
       renderAll();
       break;
+    case 'screen-stop':
+      closeScreenIn(member);
+      break;
     case 'bye':
       removeMember(member.id);
       break;
@@ -341,10 +369,217 @@ function removeMember(id) {
   clearTimeout(m.iceTimer);
   m.conn?.close();
   m.call?.close();
+  closeScreenIn(m);
+  m.screenOut?.close();
   m.audio.srcObject = null;
   m.li.remove();
   removeMeter(id);
   if (!state.leaving && id === state.hostId) handleHostLeft();
+}
+
+// ---------- Compartilhar tela ----------
+
+async function openSharePicker() {
+  if (state.screen) return stopShare();
+  if (!window.baderna) return setRoomStatus('Compartilhar tela só funciona no app.');
+
+  const dialog = $('share-dialog');
+  $('share-quality').value = loadPref('shareQuality') || '1080p30';
+  $('share-mode').value = loadPref('shareMode') || 'motion';
+  $('sources').textContent = 'Carregando…';
+  dialog.showModal();
+
+  let sources;
+  try {
+    sources = await window.baderna.listScreens();
+  } catch (err) {
+    console.error(err);
+    $('sources').textContent = 'Não consegui listar as telas.';
+    return;
+  }
+
+  const groups = [['Telas', sources.filter((s) => s.isScreen)], ['Janelas', sources.filter((s) => !s.isScreen)]];
+  $('sources').replaceChildren();
+  for (const [title, list] of groups) {
+    if (!list.length) continue;
+    const h = document.createElement('h3');
+    h.textContent = title;
+    $('sources').append(h);
+    for (const s of list) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      const img = document.createElement('img');
+      img.src = s.thumbnail;
+      img.alt = '';
+      const label = document.createElement('span');
+      label.textContent = s.name;
+      label.title = s.name;
+      btn.append(img, label);
+      btn.addEventListener('click', () => {
+        dialog.close();
+        shareSource(s.id);
+      });
+      $('sources').append(btn);
+    }
+  }
+}
+
+async function shareSource(sourceId) {
+  const presetKey = $('share-quality').value;
+  const mode = $('share-mode').value;
+  savePref('shareQuality', presetKey);
+  savePref('shareMode', mode);
+  try {
+    await window.baderna.selectScreen(sourceId);
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    await beginShare(stream, presetKey, mode);
+  } catch (err) {
+    console.error(err);
+    setRoomStatus(err?.name === 'NotAllowedError'
+      ? 'Compartilhamento cancelado ou bloqueado pelo sistema.'
+      : `Não deu pra compartilhar: ${describeError(err)}`);
+  }
+}
+
+// Separado do seletor pra dar pra testar com qualquer stream de vídeo.
+async function beginShare(stream, presetKey, mode) {
+  stopShare();
+  const preset = SHARE_PRESETS[presetKey] ?? SHARE_PRESETS['1080p30'];
+  const track = stream.getVideoTracks()[0];
+  track.contentHint = mode;
+  try {
+    await track.applyConstraints({
+      width: { max: preset.width },
+      height: { max: preset.height },
+      frameRate: { max: preset.frameRate },
+    });
+  } catch (err) {
+    console.warn('applyConstraints', err);
+  }
+  // Usuário pode parar pelo próprio sistema (ou a janela fechar).
+  track.addEventListener('ended', stopShare);
+
+  state.screen = { stream, preset, mode };
+  for (const m of state.members.values()) sendScreenTo(m);
+  showScreen(state.myId, `${state.name} (você)`, stream);
+  updateShareButton();
+  renderSelf();
+}
+
+function stopShare() {
+  if (!state.screen) return;
+  const { stream } = state.screen;
+  state.screen = null;
+  stream.getTracks().forEach((t) => t.stop());
+  for (const m of state.members.values()) {
+    m.screenOut?.close();
+    m.screenOut = null;
+  }
+  broadcast({ type: 'screen-stop' });
+  hideScreen(state.myId);
+  updateShareButton();
+  renderSelf();
+}
+
+function sendScreenTo(member) {
+  if (!state.screen || member.screenOut) return;
+  const call = state.mainPeer.call(member.id, state.screen.stream, { metadata: { kind: 'screen' } });
+  if (!call) return;
+  member.screenOut = call;
+  tuneScreenSender(call.peerConnection, state.screen.preset, state.screen.mode);
+  call.on('close', () => {
+    if (member.screenOut === call) member.screenOut = null;
+  });
+}
+
+// Bitrate padrão do WebRTC é baixo pra tela cheia; sobe pro preset escolhido.
+function tuneScreenSender(pc, preset, mode) {
+  if (!pc) return;
+  const apply = async () => {
+    for (const sender of pc.getSenders()) {
+      if (sender.track?.kind !== 'video') continue;
+      const params = sender.getParameters();
+      if (!params.encodings?.length) params.encodings = [{}];
+      params.encodings[0].maxBitrate = preset.maxBitrate;
+      params.encodings[0].maxFramerate = preset.frameRate;
+      params.degradationPreference = mode === 'motion' ? 'maintain-framerate' : 'maintain-resolution';
+      try {
+        await sender.setParameters(params);
+      } catch {
+        delete params.degradationPreference;
+        await sender.setParameters(params).catch((err) => console.warn('setParameters', err));
+      }
+    }
+  };
+  pc.addEventListener('connectionstatechange', () => {
+    if (pc.connectionState === 'connected') apply();
+  });
+}
+
+function attachScreenIn(member, call) {
+  member.screenIn?.close();
+  member.screenIn = call;
+  call.on('stream', (stream) => {
+    showScreen(member.id, member.name, stream);
+    renderTile(member);
+  });
+  call.on('close', () => {
+    if (member.screenIn === call) closeScreenIn(member);
+  });
+}
+
+function closeScreenIn(member) {
+  const call = member.screenIn;
+  member.screenIn = null;
+  call?.close();
+  hideScreen(member.id);
+  if (state.members.has(member.id)) renderTile(member);
+}
+
+function showScreen(id, label, stream) {
+  let fig = [...$('stage').children].find((el) => el.dataset.id === id);
+  if (!fig) {
+    fig = document.createElement('figure');
+    fig.className = 'screen';
+    fig.dataset.id = id;
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    const caption = document.createElement('figcaption');
+    const name = document.createElement('span');
+    const full = document.createElement('button');
+    full.type = 'button';
+    full.textContent = '⛶';
+    full.title = 'Tela cheia (ou duplo clique)';
+    full.addEventListener('click', () => toggleFullscreen(fig));
+    caption.append(name, full);
+    fig.append(video, caption);
+    fig.addEventListener('dblclick', () => toggleFullscreen(fig));
+    $('stage').append(fig);
+  }
+  fig.querySelector('span').textContent = label;
+  fig.querySelector('video').srcObject = stream;
+  $('stage').hidden = false;
+}
+
+function hideScreen(id) {
+  const fig = [...$('stage').children].find((el) => el.dataset.id === id);
+  if (!fig) return;
+  if (document.fullscreenElement === fig) document.exitFullscreen().catch(() => {});
+  fig.querySelector('video').srcObject = null;
+  fig.remove();
+  $('stage').hidden = $('stage').children.length === 0;
+}
+
+function toggleFullscreen(el) {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else el.requestFullscreen().catch((err) => console.warn('fullscreen', err));
+}
+
+function updateShareButton() {
+  $('share').textContent = state.screen ? '⏹️ Parar de compartilhar' : '🖥️ Compartilhar tela';
+  $('share').classList.toggle('active', !!state.screen);
 }
 
 // ---------- Microfone ----------
@@ -514,12 +749,14 @@ function fillTile(li, name, tags) {
 }
 
 function renderTile(m) {
-  fillTile(m.li, m.name, [m.id === state.hostId && '👑 host', m.muted && '🔇 mutado']);
+  fillTile(m.li, m.name, [m.id === state.hostId && '👑 host', m.muted && '🔇 mutado', m.screenIn && '🖥️ tela']);
 }
 
 function renderSelf() {
   if (!state.selfLi) return;
-  fillTile(state.selfLi, state.name, ['você', state.myId === state.hostId && '👑 host', state.muted && '🔇 mutado']);
+  fillTile(state.selfLi, state.name, [
+    'você', state.myId === state.hostId && '👑 host', state.muted && '🔇 mutado', state.screen && '🖥️ tela',
+  ]);
 }
 
 function renderAll() {
@@ -586,6 +823,8 @@ $('join').addEventListener('click', join);
 $('room').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
 $('mute').addEventListener('click', toggleMute);
 $('leave').addEventListener('click', leave);
+$('share').addEventListener('click', openSharePicker);
+$('share-cancel').addEventListener('click', () => $('share-dialog').close());
 window.addEventListener('beforeunload', () => {
   broadcast({ type: 'bye' });
   destroyPeer(state.beacon);

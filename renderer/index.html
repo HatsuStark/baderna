@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src https://*.peerjs.com wss://*.peerjs.com">
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://*.peerjs.com wss://*.peerjs.com">
   <title>Baderna</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -37,13 +37,38 @@
         <span id="role" class="badge"></span>
       </div>
       <div class="controls">
+        <button id="share">🖥️ Compartilhar tela</button>
         <button id="mute">🎤 Mutar</button>
         <button id="leave" class="danger">Sair</button>
       </div>
     </header>
+    <div id="stage" hidden></div>
     <ul id="members"></ul>
     <p id="room-status" class="status"></p>
   </section>
+
+  <dialog id="share-dialog">
+    <h2>Compartilhar tela</h2>
+    <div class="row">
+      <label>Qualidade
+        <select id="share-quality">
+          <option value="720p30">720p 30fps (~2.5 Mbps por pessoa)</option>
+          <option value="1080p30" selected>1080p 30fps (~4.5 Mbps por pessoa)</option>
+          <option value="1080p60">1080p 60fps (~8 Mbps por pessoa)</option>
+        </select>
+      </label>
+      <label>Conteúdo
+        <select id="share-mode">
+          <option value="motion">Filme / vídeo (prioriza fluidez)</option>
+          <option value="detail">Texto / código (prioriza nitidez)</option>
+        </select>
+      </label>
+    </div>
+    <div id="sources" class="sources"></div>
+    <div class="dialog-actions">
+      <button id="share-cancel" type="button">Cancelar</button>
+    </div>
+  </dialog>
 
   <script src="../node_modules/peerjs/dist/peerjs.min.js"></script>
   <script src="app.js"></script>
