@@ -8,7 +8,8 @@
 //
 // Mensagens no DataChannel: profile (nome/boneco/mudo), chat, theme (só do
 // host), host, screen-stop, bye, movies (lista de filmes, em movies.js),
-// watching (quais transmissões cada um tem abertas). Tudo que vem de fora é validado antes de
+// watching (quais transmissões cada um tem abertas: só essas recebem vídeo),
+// preview (foto da tela de quem transmite, a cada 4 s). Tudo que vem de fora é validado antes de
 // chegar no DOM; texto sempre via textContent.
 
 const ROOM_PREFIX = 'baderna-v1-';
@@ -125,6 +126,9 @@ const state = {
   iceServers: null,   // STUN/TURN usados nas conexões (vêm do main)
   screenMuted: false, // mutei a tela que estou assistindo (só pra mim)
   watchingAlso: null, // segunda transmissão aberta, lado a lado
+  tuned: new Set(),   // transmissões que abri (coluna da esquerda): só essas recebem vídeo
+  previews: new Map(), // peerId -> foto da tela (data:image/jpeg) mostrada na frente do boneco
+  splitRestore: null, // lado a lado: a outra metade, pra voltar ao sair da tela cheia
   stats: new Map(),   // prêmios da resenha: nome -> contadores
   statsTimer: 0,
   sessionStart: 0,
@@ -436,7 +440,8 @@ function attachConn(member, conn) {
     watchIce(member, conn.peerConnection);
     conn.send(myProfile());
     sendMoviesTo(member);
-    conn.send({ type: 'watching', ids: watchedIds() });
+    conn.send({ type: 'watching', ids: [...state.tuned] });
+    if (state.screen && state.previews.has(state.myId)) conn.send({ type: 'preview', img: state.previews.get(state.myId) });
     // Quem chega depois também recebe a tela que já está rolando.
     if (state.screen) sendScreenTo(member);
   });
@@ -493,8 +498,12 @@ function handleMessage(member, msg) {
       handleMoviesMessage(msg);
       break;
     case 'watching':
-      member.watchingIds = Array.isArray(msg.ids) ? msg.ids.filter((x) => typeof x === 'string').slice(0, 2) : [];
+      member.watchingIds = Array.isArray(msg.ids) ? msg.ids.filter((x) => typeof x === 'string').slice(0, 8) : [];
       updateLiveRail();
+      if (state.screen) retuneScreen();
+      break;
+    case 'preview':
+      handlePreview(member, msg);
       break;
     case 'bye':
       removeMember(member.id, 'bye');
@@ -988,37 +997,61 @@ const mbps = (bps) => (bps / 1e6).toFixed(1).replace('.', ',');
 async function retuneScreen() {
   const screen = state.screen;
   if (!screen) return;
-  const pcs = [...state.members.values()]
-    .map((m) => m.screenOut?.peerConnection)
-    .filter((pc) => pc?.connectionState === 'connected');
-  const viewers = [...state.members.values()].filter((m) => m.screenOut).length;
+  const members = [...state.members.values()].filter((m) => m.screenOut?.peerConnection?.connectionState === 'connected');
+  const viewers = Math.max(1, [...state.members.values()].filter((m) => m.screenOut && wantsMyScreen(m)).length);
   const budget = uploadBudgetBps();
 
-  for (const pc of pcs) {
-    for (const sender of pc.getSenders()) {
-      const params = sender.getParameters();
-      if (!params.encodings?.length) continue;
-      if (sender.track?.kind === 'audio') {
-        params.encodings[0].maxBitrate = SCREEN_AUDIO_BITRATE;
-        await sender.setParameters(params).catch((err) => console.warn('setParameters audio', err));
-        continue;
-      }
-      if (sender.track?.kind !== 'video') continue;
-      const codec = params.codecs?.[0]?.mimeType.split('/')[1]?.toUpperCase() ?? 'VP8';
-      const { perViewer } = screenBitrate({ preset: screen.preset, codec, viewers, withAudio: !!screen.audio, budget });
-      const a = adaptOf(sender);
-      a.base = perViewer;
-      applyAdaptLevel(params, a);
-      params.degradationPreference = screen.mode === 'motion' ? 'maintain-framerate' : 'maintain-resolution';
-      try {
-        await sender.setParameters(params);
-      } catch {
-        delete params.degradationPreference;
-        await sender.setParameters(params).catch((err) => console.warn('setParameters', err));
-      }
+  const updates = [];
+  for (const m of members) {
+    const on = wantsMyScreen(m);
+    for (const sender of m.screenOut.peerConnection.getSenders()) {
+      const kind = sender.track?.kind;
+      if (kind !== 'audio' && kind !== 'video') continue;
+      updates.push(updateSender(sender, (params) => {
+        params.encodings[0].active = on;
+        if (kind === 'audio') {
+          params.encodings[0].maxBitrate = SCREEN_AUDIO_BITRATE;
+          return;
+        }
+        const codec = params.codecs?.[0]?.mimeType.split('/')[1]?.toUpperCase() ?? 'VP8';
+        const { perViewer } = screenBitrate({ preset: screen.preset, codec, viewers, withAudio: !!screen.audio, budget });
+        const a = adaptOf(sender);
+        a.base = perViewer;
+        applyAdaptLevel(params, a);
+        params.degradationPreference = screen.mode === 'motion' ? 'maintain-framerate' : 'maintain-resolution';
+      }));
     }
   }
+  await Promise.all(updates);
   if (state.screen === screen) updateShareLabel();
+}
+
+// Ajustes de envio de uma conexão em fila: dois setParameters ao mesmo tempo
+// no mesmo sender fazem o segundo ser recusado (e o ajuste se perde).
+const senderQueues = new WeakMap();
+
+function updateSender(sender, mutate) {
+  const run = async () => {
+    const params = sender.getParameters();
+    if (!params.encodings?.length) return;
+    mutate(params);
+    try {
+      await sender.setParameters(params);
+    } catch (err) {
+      if (!('degradationPreference' in params)) throw err;
+      delete params.degradationPreference;
+      await sender.setParameters(params);
+    }
+  };
+  const next = (senderQueues.get(sender) ?? Promise.resolve()).then(run).catch((err) => console.warn('setParameters', err));
+  senderQueues.set(sender, next);
+  return next;
+}
+
+// Quem abriu minha transmissão recebe o vídeo; o resto só as fotos. Versão
+// antiga (nunca mandou 'watching') continua recebendo tudo, como antes.
+function wantsMyScreen(m) {
+  return m.watchingIds === undefined || m.watchingIds.includes(state.myId);
 }
 
 // "1080p30, 4,2 Mbps": a melhor qualidade que está saindo e o upload total
@@ -1031,7 +1064,9 @@ function updateShareLabel() {
     const pc = m.screenOut?.peerConnection;
     const sender = pc?.getSenders().find((x) => x.track?.kind === 'video');
     if (!sender || pc.connectionState !== 'connected') continue;
-    total += sender.getParameters().encodings?.[0]?.maxBitrate ?? 0;
+    const enc = sender.getParameters().encodings?.[0];
+    if (enc?.active === false) continue;
+    total += enc?.maxBitrate ?? 0;
     best = Math.min(best, adaptOf(sender).level);
   }
   setScreenLabel(state.myId, Number.isFinite(best)
@@ -1101,6 +1136,11 @@ async function adaptScreen() {
     if (!sender) continue;
     const a = adaptOf(sender);
     if (!a.base) continue; // retuneScreen ainda não passou por aqui
+    if (sender.getParameters().encodings?.[0]?.active === false) {
+      a.bad = 0; // ninguém assistindo por aqui: nada a ajustar
+      a.good = 0;
+      continue;
+    }
     const stats = await screenSenderStats(sender);
     if (state.screen !== screen) return;
     if (!stats) continue;
@@ -1126,10 +1166,7 @@ async function adaptScreen() {
     } else {
       continue;
     }
-    const params = sender.getParameters();
-    if (!params.encodings?.length) continue;
-    applyAdaptLevel(params, a);
-    await sender.setParameters(params).catch((err) => console.warn('adapt setParameters', err));
+    await updateSender(sender, (params) => applyAdaptLevel(params, a));
     changed = true;
   }
   if (changed && state.screen === screen) updateShareLabel();
@@ -1190,7 +1227,12 @@ async function beginShare(stream, presetKey, mode, audio = null) {
   // Usuário pode parar pelo próprio sistema (ou a janela fechar).
   track.addEventListener('ended', stopShare);
 
-  state.screen = { stream, preset, mode, audio, codecs, adaptTimer: setInterval(adaptScreen, ADAPT_INTERVAL_MS) };
+  state.screen = {
+    stream, preset, mode, audio, codecs,
+    adaptTimer: setInterval(adaptScreen, ADAPT_INTERVAL_MS),
+    previewTimer: setInterval(sharePreview, PREVIEW_MS),
+  };
+  setTimeout(sharePreview, 600); // primeira foto logo que a imagem chega
   for (const m of state.members.values()) sendScreenTo(m);
   registerScreen(state.myId, 'Sua tela', stream, false);
   addSystem('Você começou a compartilhar a tela.');
@@ -1200,8 +1242,9 @@ async function beginShare(stream, presetKey, mode, audio = null) {
 
 function stopShare() {
   if (!state.screen) return;
-  const { stream, audio, adaptTimer } = state.screen;
+  const { stream, audio, adaptTimer, previewTimer } = state.screen;
   clearInterval(adaptTimer);
+  clearInterval(previewTimer);
   state.screen = null;
   audio?.stop();
   stream.getTracks().forEach((t) => t.stop());
@@ -1273,14 +1316,16 @@ function registerScreen(id, label, stream, audible) {
   }
   Object.assign(s, { stream, label, audible });
   s.video.srcObject = stream;
-  const card = createScreenCard(id, label, stream);
-  if (s.card) s.card.replaceWith(card);
-  else {
-    $('live-list').append(card);
-    if (id !== state.myId) announceLive(card);
+  const isNew = !s.card && !s.seen;
+  s.seen = true;
+  if (state.tuned.has(id)) {
+    const card = createScreenCard(id, label, stream);
+    if (s.card) s.card.replaceWith(card);
+    else $('live-list').append(card);
+    s.card = card;
   }
-  s.card = card;
   updateLiveRail();
+  if (isNew && id !== state.myId) announceLive(seatOf(id)?.querySelector('.seat-live'));
   if (watchedIds().includes(id)) renderWatch();
 }
 
@@ -1291,8 +1336,11 @@ function unregisterScreen(id) {
   state.screens.delete(id);
   s.video.srcObject = null;
   s.card?.remove();
+  state.tuned.delete(id);
+  state.previews.delete(id);
   if (wasWatched) unwatch(id);
   updateLiveRail();
+  updateSeatLive(id);
 }
 
 // Card da transmissão na coluna "AO VIVO" (canto esquerdo). Duplo clique
@@ -1338,7 +1386,17 @@ function createScreenCard(id, label, stream) {
     watchSide(id);
   });
   side.addEventListener('dblclick', (e) => e.stopPropagation());
-  shot.append(side);
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'card-close';
+  close.textContent = '✕';
+  close.title = 'Tirar da coluna (para de receber o vídeo)';
+  close.addEventListener('click', (e) => {
+    e.stopPropagation();
+    untune(id);
+  });
+  close.addEventListener('dblclick', (e) => e.stopPropagation());
+  shot.append(side, close);
   card.append(shot, meta, viewers);
   card.addEventListener('dblclick', () => {
     if (watchedIds().includes(id) && !document.fullscreenElement) toggleFullscreen();
@@ -1348,8 +1406,10 @@ function createScreenCard(id, label, stream) {
 }
 
 function updateLiveRail() {
-  $('live-rail').hidden = state.screens.size === 0;
-  $('room-view').querySelector('.center').classList.toggle('has-live', state.screens.size > 0);
+  const any = $('live-list').children.length > 0;
+  $('live-rail').hidden = !any;
+  $('room-view').querySelector('.center').classList.toggle('has-live', any);
+  for (const id of state.screens.keys()) updateSeatLive(id);
   const watched = watchedIds();
   for (const card of $('live-list').children) {
     const id = card.dataset.id;
@@ -1389,6 +1449,7 @@ function watchedIds() {
 
 function watch(id) {
   if (!state.screens.has(id)) return;
+  if (!state.tuned.has(id)) tune(id);
   if (state.watchingAlso === id) state.watchingAlso = null;
   state.watching = id;
   renderWatch();
@@ -1396,6 +1457,7 @@ function watch(id) {
 
 function watchSide(id) {
   if (!state.watching || state.watching === id) return watch(id);
+  if (!state.tuned.has(id)) tune(id);
   state.watchingAlso = id;
   renderWatch();
 }
@@ -1449,7 +1511,109 @@ function renderWatch() {
 
 // Avisa a galera o que estou assistindo (o card mostra "👁 fulano").
 function sendWatching() {
-  broadcast({ type: 'watching', ids: watchedIds() });
+  broadcast({ type: 'watching', ids: [...state.tuned] });
+}
+
+// ---------- Prévias na frente do boneco ----------
+// Quem transmite manda uma foto pequena da tela a cada 4 s pra todo mundo;
+// o vídeo de verdade só vai pra quem abriu a transmissão (clicando na foto).
+
+const PREVIEW_MS = 4000;
+const PREVIEW_WIDTH = 320;
+const PREVIEW_MAX_CHARS = 300_000;
+
+function seatOf(id) {
+  return id === state.myId ? state.selfSeat : state.members.get(id)?.seat;
+}
+
+async function capturePreview() {
+  const track = state.screen?.stream.getVideoTracks()[0];
+  if (!track || track.readyState !== 'live') return null;
+  try {
+    const frame = await new ImageCapture(track).grabFrame();
+    const height = Math.min(320, Math.round((PREVIEW_WIDTH * frame.height) / frame.width));
+    const canvas = new OffscreenCanvas(PREVIEW_WIDTH, height);
+    canvas.getContext('2d').drawImage(frame, 0, 0, PREVIEW_WIDTH, height);
+    frame.close();
+    const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.6 });
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function sharePreview() {
+  const img = await capturePreview();
+  if (!img || !state.screen) return;
+  state.previews.set(state.myId, img);
+  updateSeatLive(state.myId);
+  broadcast({ type: 'preview', img });
+}
+
+function handlePreview(member, msg) {
+  const img = msg.img;
+  if (typeof img !== 'string' || !img.startsWith('data:image/jpeg;base64,') || img.length > PREVIEW_MAX_CHARS) return;
+  state.previews.set(member.id, img);
+  updateSeatLive(member.id);
+}
+
+// Foto + selo AO VIVO + quantos estão vendo, na altura do colo do boneco.
+function updateSeatLive(id) {
+  const seat = seatOf(id);
+  if (!seat) return;
+  let box = seat.querySelector('.seat-live');
+  if (!state.screens.has(id)) {
+    box?.remove();
+    return;
+  }
+  if (!box) {
+    box = document.createElement('button');
+    box.type = 'button';
+    box.className = 'seat-live';
+    box.title = 'Clique pra abrir a transmissão';
+    box.innerHTML = '<img alt=""><i class="live-dot">AO VIVO</i><span class="seat-viewers"></span>';
+    box.addEventListener('click', (e) => {
+      e.stopPropagation();
+      tune(id);
+    });
+    box.addEventListener('dblclick', (e) => e.stopPropagation());
+    seat.append(box);
+  }
+  const img = box.querySelector('img');
+  const src = state.previews.get(id);
+  if (src && img.getAttribute('src') !== src) img.src = src;
+  img.hidden = !src;
+  box.classList.toggle('tuned', state.tuned.has(id));
+  const viewers = [...state.members.values()].filter((m) => m.watchingIds?.includes(id)).length;
+  box.querySelector('.seat-viewers').textContent = viewers ? `👁 ${viewers}` : '';
+}
+
+// Abre na coluna da esquerda (vídeo ao vivo); ✕ no card fecha.
+function tune(id) {
+  const s = state.screens.get(id);
+  if (!s) return;
+  if (!state.tuned.has(id)) {
+    state.tuned.add(id);
+    s.card = createScreenCard(id, s.label, s.stream);
+    $('live-list').append(s.card);
+  }
+  updateLiveRail();
+  sendWatching();
+}
+
+function untune(id) {
+  if (watchedIds().includes(id)) unwatch(id);
+  state.tuned.delete(id);
+  const s = state.screens.get(id);
+  s?.card?.remove();
+  if (s) s.card = null;
+  updateLiveRail();
+  sendWatching();
 }
 
 function applyScreenAudio(s) {
@@ -1926,7 +2090,6 @@ function fillSeat(seat, { id, name, avatar, host, muted, deaf, sharing, self, si
     badges.push(el);
   };
   if (host) badge('host', 'HOST');
-  if (sharing) badge('share', 'AO VIVO', () => watch(id));
   if (deaf) badge('deaf', 'SURDO');
   else if (muted) badge('muted', 'MUDO');
   if (silenced) badge('silenced', 'SILENCIADO P/ MIM');
@@ -2359,7 +2522,17 @@ $('btn-leave').addEventListener('click', leave);
 
 $('screen-close').addEventListener('click', closeWatch);
 $('screen-full').addEventListener('click', toggleFullscreen);
-$('screen-box').addEventListener('dblclick', toggleFullscreen);
+$('screen-box').addEventListener('dblclick', (e) => {
+  const tile = e.target.closest('.screen-tile');
+  // Lado a lado: duplo clique numa metade põe só ela em tela cheia; ao sair, volta às duas.
+  if (tile && $('screen-box').classList.contains('split') && !document.fullscreenElement) {
+    state.splitRestore = watchedIds().find((x) => x !== tile.dataset.id) ?? null;
+    state.watching = tile.dataset.id;
+    state.watchingAlso = null;
+    renderWatch();
+  }
+  toggleFullscreen();
+});
 $('screen-volume').addEventListener('input', () => setScreenVolume(Number($('screen-volume').value)));
 $('screen-mute').addEventListener('click', toggleScreenMute);
 $('screen-view').addEventListener('mousemove', showScreenControls);
@@ -2500,6 +2673,14 @@ document.addEventListener('fullscreenchange', () => {
     showScreenControls();
   }
   else if ($('seats').parentElement !== stage) stage.insertBefore($('seats'), stage.querySelector('.dock'));
+  if (!fs && state.splitRestore) {
+    const other = state.splitRestore;
+    state.splitRestore = null;
+    if (state.watching && state.screens.has(other)) {
+      state.watchingAlso = other;
+      renderWatch();
+    }
+  }
 });
 
 function setFullscreenSeatsHidden(hide) {
