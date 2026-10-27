@@ -1,15 +1,17 @@
 {
   "name": "baderna",
   "productName": "Baderna",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Baderna: voz e tela P2P entre amigos",
   "main": "main.js",
   "private": true,
+  "repository": "github:HatsuStark/baderna",
   "scripts": {
     "start": "electron .",
     "start:2": "electron . --profile=2",
     "build:native": "native\\build.cmd",
-    "dist": "npm run build:native && electron-builder --win"
+    "dist": "npm run build:native && electron-builder --win",
+    "release": "npm run build:native && electron-builder --win --publish always"
   },
   "build": {
     "appId": "com.baderna.app",
@@ -33,6 +35,14 @@
       {
         "from": "native/bin/proc-audio.exe",
         "to": "proc-audio.exe"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "HatsuStark",
+        "repo": "baderna",
+        "releaseType": "release"
       }
     ],
     "win": {
