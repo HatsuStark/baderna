@@ -36,6 +36,10 @@
           <p id="lobby-status" class="status"></p>
         </div>
       </div>
+      <section id="saved-section" class="saved" hidden>
+        <h3>Salas salvas</h3>
+        <div id="saved-rooms" class="saved-rooms"></div>
+      </section>
     </div>
   </section>
 
@@ -44,6 +48,7 @@
     <header class="topbar">
       <div class="logo">Baderna</div>
       <div class="chips">
+        <button id="save-chip" class="chip" type="button" title="Salvar esta sala"></button>
         <button id="room-chip" class="chip" type="button" title="Copiar código">sala <b id="room-code"></b></button>
         <span id="count-chip" class="chip"></span>
         <span id="live-chips" class="chips"></span>
@@ -122,6 +127,23 @@
     <div class="dialog-actions">
       <button id="settings-close" class="primary" type="button">Fechar</button>
     </div>
+  </dialog>
+
+  <!-- ---------- Salvar sala ---------- -->
+  <dialog id="save-dialog">
+    <h2>Salvar sala</h2>
+    <form id="save-form" method="dialog">
+      <label>Nome da sala
+        <input id="save-name" maxlength="30" placeholder="ex: Resenha de quinta" autocomplete="off">
+      </label>
+      <p class="status">Código: <b id="save-code"></b> · o tema atual fica salvo junto.</p>
+      <div class="dialog-actions">
+        <button id="save-remove" class="ghost" type="button">Remover dos salvos</button>
+        <span class="spacer"></span>
+        <button id="save-cancel" class="ghost" type="button">Cancelar</button>
+        <button class="primary" type="submit">Salvar</button>
+      </div>
+    </form>
   </dialog>
 
   <!-- ---------- Editor de boneco ---------- -->

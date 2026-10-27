@@ -131,6 +131,7 @@ async function join() {
   $('room').value = room;
   if (!name || !room) return setLobbyStatus('Preencha nome e código da sala.');
   savePref('name', name);
+  savePref('lastRoom', room);
 
   $('join').disabled = true;
   try {
@@ -146,6 +147,8 @@ async function join() {
 
     if (await tryClaimBeacon()) {
       state.seq = 0;
+      // Sala salva volta com o último tema usado nela.
+      state.theme = savedRoom(room)?.theme ?? DEFAULT_THEME;
       becomeHost();
     } else {
       await joinViaBeacon();
@@ -527,6 +530,7 @@ function setTheme(id) {
   applyTheme(id);
   broadcast({ type: 'theme', theme: id });
   addSystem(`Você mudou o tema pra ${THEMES[id].name}.`);
+  rememberRoomTheme();
 }
 
 function buildThemeGrid() {
@@ -1513,6 +1517,8 @@ function showRoom() {
   state.selfSeat = createSeat(null);
   addMeter(state.myId, state.localStream);
   $('room-code').textContent = state.room;
+  updateSaveChip();
+  touchSavedRoom(state.room);
   applyTheme(state.theme);
   updateDock();
   updateCount();
@@ -1530,6 +1536,119 @@ function showLobby() {
   $('room-view').hidden = true;
   $('lobby').hidden = false;
   renderLobbySeat();
+  renderSavedRooms();
+}
+
+// ---------- Salas salvas ----------
+// Só o código e um apelido, guardados neste PC. A sala em si não existe em
+// lugar nenhum: quem entra primeiro com o código vira host e "recria".
+
+const SAVED_MAX = 20;
+const SAVED_NAME_MAX = 30;
+
+function loadRooms() {
+  try {
+    const list = JSON.parse(loadPref('rooms') || '[]');
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((r) => r && typeof r.code === 'string' && r.code && normalizeRoom(r.code) === r.code)
+      .map((r) => ({
+        code: r.code,
+        name: String(r.name || r.code).slice(0, SAVED_NAME_MAX),
+        theme: THEMES[r.theme] ? r.theme : undefined,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function storeRooms(list) {
+  savePref('rooms', JSON.stringify(list.slice(0, SAVED_MAX)));
+}
+
+function savedRoom(code) {
+  return loadRooms().find((r) => r.code === code);
+}
+
+// Sala usada sobe pro topo da lista.
+function touchSavedRoom(code) {
+  const list = loadRooms();
+  const i = list.findIndex((r) => r.code === code);
+  if (i > 0) storeRooms([list[i], ...list.slice(0, i), ...list.slice(i + 1)]);
+}
+
+function rememberRoomTheme() {
+  const list = loadRooms();
+  const room = list.find((r) => r.code === state.room);
+  if (!room) return;
+  room.theme = state.theme;
+  storeRooms(list);
+}
+
+function renderSavedRooms() {
+  const rooms = loadRooms();
+  $('saved-section').hidden = rooms.length === 0;
+  $('saved-rooms').replaceChildren(...rooms.map((r) => {
+    const item = document.createElement('div');
+    item.className = 'saved-item';
+    const enter = document.createElement('button');
+    enter.type = 'button';
+    enter.className = 'enter';
+    enter.title = `Entrar em ${r.name}`;
+    const b = document.createElement('b');
+    b.textContent = `★ ${r.name}`;
+    const small = document.createElement('small');
+    small.textContent = r.theme ? `${r.code} · ${THEMES[r.theme].name}` : r.code;
+    enter.append(b, small);
+    enter.addEventListener('click', () => {
+      $('room').value = r.code;
+      join();
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'remove';
+    remove.textContent = '✕';
+    remove.title = 'Remover dos salvos';
+    remove.addEventListener('click', () => {
+      storeRooms(loadRooms().filter((x) => x.code !== r.code));
+      renderSavedRooms();
+    });
+    item.append(enter, remove);
+    return item;
+  }));
+}
+
+function updateSaveChip() {
+  const saved = state.room && savedRoom(state.room);
+  $('save-chip').textContent = saved ? `★ ${saved.name}` : '☆ salvar sala';
+  $('save-chip').classList.toggle('is-saved', !!saved);
+}
+
+function openSaveDialog() {
+  const saved = savedRoom(state.room);
+  $('save-name').value = saved?.name ?? '';
+  $('save-code').textContent = state.room;
+  $('save-remove').hidden = !saved;
+  $('save-dialog').showModal();
+  $('save-name').focus();
+}
+
+function confirmSaveRoom(e) {
+  e.preventDefault();
+  const name = $('save-name').value.trim().slice(0, SAVED_NAME_MAX) || state.room;
+  const list = loadRooms().filter((r) => r.code !== state.room);
+  list.unshift({ code: state.room, name, theme: state.theme });
+  storeRooms(list);
+  $('save-dialog').close();
+  updateSaveChip();
+  addSystem(`Sala salva como "${name}".`);
+}
+
+function removeCurrentRoom() {
+  storeRooms(loadRooms().filter((r) => r.code !== state.room));
+  $('save-dialog').close();
+  updateSaveChip();
+  addSystem('Sala removida dos salvos.');
 }
 
 function setLobbyStatus(text) { $('lobby-status').textContent = text; }
@@ -1545,9 +1664,10 @@ function normalizeRoom(raw) {
 
 function randomRoomCode() {
   const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
-  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  // 12 caracteres: dá pra usar como sala fixa sem ninguém adivinhar.
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
   const chars = [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
-  return `${chars.slice(0, 4)}-${chars.slice(4)}`;
+  return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
 }
 
 function describeError(err) {
@@ -1562,7 +1682,14 @@ function describeError(err) {
 state.avatar = loadAvatar();
 applyTheme(DEFAULT_THEME);
 $('name').value = loadPref('name');
+$('room').value = loadPref('lastRoom');
 renderLobbySeat();
+renderSavedRooms();
+
+$('save-chip').addEventListener('click', openSaveDialog);
+$('save-form').addEventListener('submit', confirmSaveRoom);
+$('save-cancel').addEventListener('click', () => $('save-dialog').close());
+$('save-remove').addEventListener('click', removeCurrentRoom);
 
 $('name').addEventListener('input', renderLobbySeat);
 $('mic').addEventListener('change', () => {
