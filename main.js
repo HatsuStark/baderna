@@ -169,6 +169,8 @@ ipcMain.handle('screen:select', (_e, id) => {
 
 const HOTKEY_RE = /^(?:(?:Ctrl|Alt|Shift)\+){0,3}(?:[A-Z0-9]|F(?:[1-9]|1\d|2[0-4]))$/;
 
+ipcMain.handle('app:version', () => app.getVersion());
+
 ipcMain.handle('hotkeys:set', (_e, keys) => {
   globalShortcut.unregisterAll();
   const result = {};
@@ -217,6 +219,61 @@ function installUpdate() {
 
 ipcMain.on('update:install', installUpdate);
 ipcMain.handle('update:status', () => updateReady);
+
+// ---------- Servidores ICE (STUN/TURN) ----------
+// STUN descobre o endereço público; TURN repassa o tráfego quando a conexão
+// direta é bloqueada (CGNAT/NAT simétrico, comum entre operadoras). O TURN
+// padrão do PeerJS saiu do ar, então o app usa o de turn.json (fora do git,
+// vai junto no instalador), num destes formatos:
+//   { "metered": { "app": "nome-do-app", "apiKey": "..." } }  credenciais pela API da Metered
+//   { "iceServers": [{ "urls": "turn:...", "username": "...", "credential": "..." }] }
+// Sem turn.json, só STUN: funciona entre redes abertas.
+
+const STUN_SERVERS = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
+const ICE_CACHE_MS = 6 * 60 * 60 * 1000;
+let iceCache = null; // { servers, until }
+
+function readTurnConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, 'turn.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function validIceServers(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter((s) => s && (typeof s.urls === 'string' || Array.isArray(s.urls)))
+    .map((s) => ({ urls: s.urls, ...(s.username ? { username: String(s.username), credential: String(s.credential ?? '') } : {}) }));
+}
+
+async function turnServers() {
+  const cfg = readTurnConfig();
+  if (!cfg) return [];
+  if (cfg.iceServers) return validIceServers(cfg.iceServers);
+  if (cfg.metered?.app && cfg.metered?.apiKey) {
+    const appName = String(cfg.metered.app).replace(/[^\w-]/g, '');
+    const url = `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(cfg.metered.apiKey)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`Metered respondeu ${res.status}`);
+    return validIceServers(await res.json()).filter((s) => [].concat(s.urls).some((u) => /^turns?:/.test(u)));
+  }
+  return [];
+}
+
+ipcMain.handle('ice:servers', async () => {
+  if (iceCache && iceCache.until > Date.now()) return iceCache.servers;
+  let turn = [];
+  try {
+    turn = await turnServers();
+  } catch (err) {
+    console.warn('turn', err.message);
+  }
+  const servers = [...STUN_SERVERS, ...turn];
+  // Sem TURN (falhou ou não configurado), tenta de novo na próxima entrada.
+  iceCache = turn.length ? { servers, until: Date.now() + ICE_CACHE_MS } : null;
+  return servers;
+});
 
 // ---------- Capas de filme (TMDB) ----------
 // Chave pela variável TMDB_KEY ou no arquivo tmdb-key.txt (fora do git, vai

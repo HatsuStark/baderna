@@ -2,3 +2,4 @@ node_modules/
 dist/
 native/bin/
 tmdb-key.txt
+turn.json

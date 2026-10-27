@@ -28,6 +28,7 @@
       "build/tray.png",
       "build/tray-muted.png",
       "tmdb-key.txt",
+      "turn.json",
       "node_modules/peerjs/dist/peerjs.min.js",
       "package.json"
     ],

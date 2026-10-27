@@ -550,3 +550,13 @@ label.check input { width: auto; }
 /* Galera escondida: a setinha pra trazer de volta some junto com os controles. */
 #screen-seats-toggle { transition: opacity .25s; }
 .screen-view:fullscreen.hide-seats:not(.controls) #screen-seats-toggle { opacity: 0; pointer-events: none; }
+
+/* Diagnóstico de conexão */
+.badge.novoice { color: var(--red); border-color: rgba(255, 59, 92, .55); }
+.diag-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.diag-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, .03); }
+.diag-row b { font-weight: 700; }
+.diag-row span { font-size: 13px; color: var(--muted); }
+.diag-row.ok { border-color: rgba(182, 255, 59, .35); }
+.diag-row.bad { border-color: rgba(255, 59, 92, .55); }
+.diag-row.bad span { color: var(--red); }

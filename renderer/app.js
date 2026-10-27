@@ -121,6 +121,7 @@ const state = {
   lastChat: null,     // { author, time, el } pra agrupar mensagens seguidas
   codecOrder: null,   // preferência de codec de vídeo desta máquina (medida uma vez)
   codecOrderPromise: null,
+  iceServers: null,   // STUN/TURN usados nas conexões (vêm do main)
   screenMuted: false, // mutei a tela que estou assistindo (só pra mim)
   stats: new Map(),   // prêmios da resenha: nome -> contadores
   statsTimer: 0,
@@ -132,7 +133,9 @@ const state = {
 
 function openPeer(id) {
   return new Promise((resolve, reject) => {
-    const peer = id ? new Peer(id) : new Peer();
+    // STUN/TURN vêm do processo principal (turn.json); sem eles, o padrão do PeerJS.
+    const options = state.iceServers ? { config: { iceServers: state.iceServers } } : {};
+    const peer = id ? new Peer(id, options) : new Peer(options);
     const onError = (err) => {
       destroyPeer(peer);
       reject(err);
@@ -190,6 +193,7 @@ async function join() {
     await buildMicChain();
 
     setLobbyStatus('Conectando…');
+    state.iceServers = await window.baderna?.iceServers?.().catch(() => null) ?? null;
     state.name = name;
     state.room = room;
     state.mainPeer = await openPeer();
@@ -436,6 +440,8 @@ function attachConn(member, conn) {
 
 function attachCall(member, call) {
   member.call = call;
+  member.voice = null;
+  watchVoice(member, call);
   call.on('stream', (stream) => {
     member.audio.srcObject = stream;
     member.audio.play().catch(() => {});
@@ -1804,7 +1810,7 @@ function createSeat(member) {
   return seat;
 }
 
-function fillSeat(seat, { id, name, avatar, host, muted, deaf, sharing, self, silenced }) {
+function fillSeat(seat, { id, name, avatar, host, muted, deaf, sharing, self, silenced, noVoice }) {
   const key = JSON.stringify(avatar);
   if (seat.dataset.avatar !== key) {
     seat.dataset.avatar = key;
@@ -1826,13 +1832,14 @@ function fillSeat(seat, { id, name, avatar, host, muted, deaf, sharing, self, si
   if (deaf) badge('deaf', 'SURDO');
   else if (muted) badge('muted', 'MUDO');
   if (silenced) badge('silenced', 'SILENCIADO P/ MIM');
+  if (noVoice) badge('novoice', 'SEM ÁUDIO');
   seat.querySelector('.badges').replaceChildren(...badges);
 }
 
 function renderSeat(m) {
   fillSeat(m.seat, {
     id: m.id, name: m.name, avatar: m.avatar, host: m.id === state.hostId,
-    muted: m.muted, deaf: m.deaf, sharing: !!m.screenIn, silenced: personPref(m.name).mute,
+    muted: m.muted, deaf: m.deaf, sharing: !!m.screenIn, silenced: personPref(m.name).mute, noVoice: voiceFailed(m),
   });
 }
 
@@ -2460,3 +2467,141 @@ for (const action of Object.keys(HOTKEY_PREFS)) {
   $(`hotkey-${action}`).addEventListener('click', () => startHotkeyCapture(action));
 }
 syncHotkeys();
+
+// ---------- Diagnóstico de conexão ----------
+// Cada par da sala tem a própria conexão (dados + voz). Quando a rede de um
+// dos dois bloqueia conexão direta e não há TURN funcionando, aquele par não
+// se ouve. Este painel mostra, pra cada pessoa, se a voz conectou, por onde
+// passa e se o áudio está chegando; e testa o tipo de NAT desta máquina.
+
+const VOICE_TIMEOUT_MS = 15_000;
+const NAT_STUN = ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'];
+let diagTimer = 0;
+let natResult = null; // { kind, text }
+
+function watchVoice(member, call) {
+  const pc = call.peerConnection;
+  if (!pc) return;
+  const update = () => {
+    if (member.call !== call) return;
+    member.voice = pc.iceConnectionState;
+    renderSeat(member);
+  };
+  pc.addEventListener('iceconnectionstatechange', update);
+  setTimeout(() => {
+    if (member.call !== call || ['connected', 'completed'].includes(pc.iceConnectionState)) return;
+    member.voice = 'timeout';
+    renderSeat(member);
+  }, VOICE_TIMEOUT_MS);
+}
+
+function voiceFailed(m) {
+  return m.voice === 'failed' || m.voice === 'timeout';
+}
+
+// Caminho escolhido numa conexão: tipo dos candidatos, protocolo e RTT.
+async function pathInfo(pc) {
+  if (!pc) return null;
+  const stats = await pc.getStats().catch(() => null);
+  if (!stats) return null;
+  let pair = null;
+  let audioBytes = 0;
+  stats.forEach((r) => {
+    if (r.type === 'transport' && r.selectedCandidatePairId) pair = stats.get(r.selectedCandidatePairId) ?? pair;
+    if (r.type === 'inbound-rtp' && r.kind === 'audio') audioBytes = r.bytesReceived ?? 0;
+  });
+  if (!pair) stats.forEach((r) => { if (r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') pair = r; });
+  const local = pair && stats.get(pair.localCandidateId);
+  const remote = pair && stats.get(pair.remoteCandidateId);
+  let via = null;
+  if (local && remote) {
+    if (local.candidateType === 'relay' || remote.candidateType === 'relay') via = 'via TURN';
+    else if (local.candidateType === 'host' && remote.candidateType === 'host') via = 'direto, mesma rede';
+    else via = 'direto pela internet';
+    via += ` (${(local.protocol ?? '?').toUpperCase()})`;
+  }
+  return { via, rtt: pair?.currentRoundTripTime, audioBytes };
+}
+
+// NAT simétrico: o mesmo socket aparece com portas diferentes pra servidores
+// STUN diferentes. Aí conexão direta com outra rede restrita costuma falhar.
+function testNat() {
+  return new Promise((resolve) => {
+    const pc = new RTCPeerConnection({ iceServers: NAT_STUN.map((urls) => ({ urls })) });
+    const mapped = [];
+    pc.createDataChannel('nat');
+    pc.onicecandidate = (e) => {
+      const c = e.candidate;
+      if (c?.type === 'srflx' && c.protocol === 'udp') mapped.push(`${c.address}:${c.port}`);
+    };
+    pc.createOffer().then((o) => pc.setLocalDescription(o)).catch(() => {});
+    setTimeout(() => {
+      pc.close();
+      const ports = new Set(mapped.map((m) => m.split(':').pop()));
+      if (!mapped.length) resolve({ kind: 'blocked', text: 'UDP bloqueado ou sem resposta do STUN (só funciona com TURN)' });
+      else if (ports.size > 1) resolve({ kind: 'symmetric', text: 'NAT simétrico/CGNAT (com outras redes restritas, precisa de TURN)' });
+      else resolve({ kind: 'cone', text: 'NAT aberto/cone (bom pra conexão direta)' });
+    }, 4000);
+  });
+}
+
+async function renderDiag() {
+  const rows = [];
+  const lines = [];
+  for (const m of state.members.values()) {
+    const info = await pathInfo(m.call?.peerConnection);
+    const data = m.conn?.open ? 'ok' : 'sem dados';
+    const ice = m.voice ?? m.call?.peerConnection?.iceConnectionState ?? 'sem chamada';
+    const connected = ['connected', 'completed'].includes(ice);
+    m.diagPrevBytes ??= 0;
+    const arriving = info && info.audioBytes > m.diagPrevBytes;
+    m.diagPrevBytes = info?.audioBytes ?? 0;
+    const voice = connected ? `voz ok · ${info?.via ?? '?'}${info?.rtt != null ? ` · ${Math.round(info.rtt * 1000)} ms` : ''}`
+      : voiceFailed(m) ? 'voz FALHOU (conexão direta bloqueada)' : `voz: ${ice}`;
+    const audio = connected ? (arriving ? 'áudio chegando' : 'áudio NÃO está chegando') : '';
+    rows.push({ name: m.name, ok: connected && arriving, text: [voice, audio, `dados ${data}`].filter(Boolean).join(' · ') });
+    lines.push(`${m.name}: ${[voice, audio, `dados ${data}`].filter(Boolean).join(' · ')}`);
+  }
+  $('diag-net').textContent = natResult ? `Sua rede: ${natResult.text}` : 'Sua rede: testando…';
+  $('diag-list').replaceChildren(...(rows.length ? rows : [{ name: '', ok: true, text: 'Ninguém mais na sala.' }]).map((r) => {
+    const row = document.createElement('div');
+    row.className = `diag-row ${r.ok ? 'ok' : 'bad'}`;
+    const b = document.createElement('b');
+    b.textContent = r.name;
+    const span = document.createElement('span');
+    span.textContent = r.text;
+    row.append(b, span);
+    return row;
+  }));
+  const version = await window.baderna?.appVersion?.().catch(() => '?') ?? '?';
+  const turns = (state.iceServers ?? []).filter((x) => [].concat(x.urls).some((u) => /^turns?:/.test(u))).length;
+  $('diag-turn').textContent = turns ? `TURN: configurado (${turns} servidor${turns > 1 ? 'es' : ''})` : 'TURN: não configurado (redes restritas não se conectam)';
+  $('diag-copy').dataset.report = [
+    `Baderna ${version} · ${state.name} · sala ${state.room}`,
+    natResult ? `Rede: ${natResult.text}` : 'Rede: testando',
+    $('diag-turn').textContent,
+    ...lines,
+  ].join('\n');
+}
+
+async function openDiag() {
+  $('diag-dialog').showModal();
+  natResult = null;
+  renderDiag();
+  testNat().then((r) => { natResult = r; if ($('diag-dialog').open) renderDiag(); });
+  clearInterval(diagTimer);
+  diagTimer = setInterval(() => {
+    if (!$('diag-dialog').open || !state.room) return clearInterval(diagTimer);
+    renderDiag();
+  }, 2000);
+}
+
+$('count-chip').addEventListener('click', openDiag);
+$('diag-close').addEventListener('click', () => $('diag-dialog').close());
+$('diag-copy').addEventListener('click', () => {
+  navigator.clipboard.writeText($('diag-copy').dataset.report ?? '').then(
+    () => { $('diag-copy').textContent = 'Copiado! Cola no WhatsApp'; },
+    () => { $('diag-copy').textContent = 'Não deu pra copiar'; },
+  );
+  setTimeout(() => { $('diag-copy').textContent = 'Copiar relatório'; }, 2500);
+});
