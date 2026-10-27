@@ -441,6 +441,43 @@ const AVATAR_CATEGORIES = {
     ['Fantasia', ['katana', 'espada laser', 'varinha', 'onigiri']],
   ],
 };
+// Nome que aparece no editor pras peças que lembram algo famoso: paródia
+// tosca de propósito. O valor salvo e enviado aos amigos continua o de cima.
+const AVATAR_NAMES = {
+  kit: {
+    'rubro-negra': 'Framengo', 'alvinegra': 'Botafofo', 'tricolor faixa': 'San Pirlo', 'verdão': 'Parmeira',
+    'faixa diagonal': 'Vasquinho da Gama', 'tricolor grená': 'Flumineiro', 'colorada': 'Internacionau', 'celeste': 'Cruzeta',
+    'tricolor gaúcha': 'Grêmiu', 'canarinho': 'Canarinho Pistola', 'alviverde listrada': 'Coxinha FC',
+    'rubro-negra vertical': 'Atlético Paranoico', 'tricolor baiana': 'Baêa Sport', 'celeste listrada': 'Hermanos FC',
+    'goleiro neon': 'Muralha do Bairro', 'alvirrubra': 'Banguela FC', 'alvinegra horizontal': 'Vovô FC',
+    'alviverde vertical': 'Juventudo', 'verde e amarela listrada': 'Brasiliense da Laje', 'meio a meio': 'Meia-Boca FC',
+    'branca faixa verde': 'Coritibinha', 'branca clássica': 'Curintia', 'faixa diagonal vermelha': 'Ríver Pleite',
+    'rock clássico': 'AC/PC', 'metal': 'Ferratica', 'punk': 'Os Ramonas', 'raio': 'Davi Bauí', 'reggae': 'Bob Marli',
+    'grunge': 'Nirvã', 'turnê': 'Iron Maidem', 'pop': 'Taylor Suíte', 'xadrez caipira': 'Chitãozão & Chororó',
+    'cogumelo': 'Cogumelo Turbinado', 'encanador': 'Jorge', 'herói da espada': 'Zé Lda', 'vida cheia': 'Vida Extra',
+    'bloco de grama': 'Mainicrafte', 'neon retrô': 'Vaporuei', 'camuflado': 'Frifas', 'anéis dourados': 'Sônico',
+    'blocos caindo': 'Tétriz',
+    'ninja laranja': 'Narutinho', 'gi de luta': 'Goku de Itaquera', 'colete pirata': 'Lufe', 'xadrez verde': 'Tanjirão',
+    'marinheiro': 'Sailor Mun', 'jaqueta cadete': 'Ataque dos Tiozão', 'robô gigante': 'Gundão', 'kimono': 'Ichigão',
+    'mangá': 'Ora Ora Ora',
+    'teia': 'Homem-Aranhiço', 'herói de capa': 'Super Homi', 'bruxinho': 'Rari Póte', 'smoking': 'Jaime Bonde',
+    'código verde': 'Matriz', 'caça-fantasma': 'Caça-Assombração', 'manto do mestre': 'Mestre Jedai',
+    'astronauta': 'Astronauta de Mármore', 'pirata': 'Jeca Sparrow',
+  },
+  top: {
+    'espetado': 'Super Sayajão', 'topete': 'Elvês', 'chapéu de palha': 'Chapéu do Lufe', 'chapéu de bruxo': 'Chapéu do Gandalfo',
+    'tricórnio': 'Tricórnio do Jeca', 'chapéu de cowboy': 'Peão de Barretos',
+  },
+  extra: { 'bandana ninja': 'Bandana da Folha Seca', 'máscara': 'Zorra' },
+  symbol: { 'cogumelo': 'Cogumelo do Jorge' },
+  chair: {
+    'cogumelo gigante': 'Cogumelão do Jorge', 'amplificador': 'Amplificador Marshmallow', 'cadeira de diretor': 'Cadeira do Espilbergue',
+    'trono de espadas': 'Trono das Espadas Paraguaias',
+  },
+  item: { 'espada laser': 'Sabre de Luz Paraguaio', 'varinha': 'Varinha do Rari Póte', 'katana': 'Katana do Tanjirão' },
+};
+const avatarName = (key, value) => AVATAR_NAMES[key]?.[value] ?? value;
+
 const allIn = (key) => AVATAR_CATEGORIES[key].flatMap(([, list]) => list);
 
 const AVATAR_OPTIONS = {

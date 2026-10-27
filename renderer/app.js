@@ -1503,14 +1503,14 @@ function avatarField(key, options) {
     const isColor = value.startsWith('#');
     btn.className = isColor ? 'swatch' : 'pill';
     if (isColor) btn.style.background = value;
-    else btn.textContent = value;
+    else btn.textContent = avatarName(key, value);
     if (key === 'kit') {
       const chip = document.createElement('span');
       chip.className = 'kit-chip';
       chip.style.background = value === 'lisa' ? avatarDraft.shirt : KITS[value].swatch;
       btn.prepend(chip);
     }
-    btn.title = value;
+    btn.title = avatarName(key, value);
     btn.classList.toggle('selected', avatarDraft[key] === value);
     btn.addEventListener('click', () => {
       avatarDraft[key] = value;
