@@ -13,6 +13,7 @@
 const ROOM_PREFIX = 'baderna-v1-';
 const SPEAKING_THRESHOLD = 0.02;
 const SPEAKING_HOLD_MS = 250;
+const MOUTH_HOLD_MS = 90; // boca segue as sílabas; segura só um pouquinho
 const ICE_GRACE_MS = 4000;
 const BEACON_RETRY_MS = 2000;
 const BEACON_MAX_TRIES = 30;
@@ -1163,6 +1164,7 @@ function tick() {
     const speaking = now - meter.lastLoud < SPEAKING_HOLD_MS;
     const seat = id === state.myId ? state.selfSeat : state.members.get(id)?.seat;
     seat?.classList.toggle('speaking', speaking);
+    seat?.classList.toggle('loud', now - meter.lastLoud < MOUTH_HOLD_MS);
   }
   if ($('settings-dialog').open) {
     const mine = state.meters.get(state.myId);
@@ -1276,6 +1278,8 @@ function createSeat(member) {
   const seat = document.createElement('div');
   seat.className = 'seat';
   seat.innerHTML = SEAT_SKELETON;
+  // Cada um balança num tempo diferente, pra não ficar todo mundo em coro.
+  seat.style.setProperty('--bob-delay', `${-(Math.random() * 0.38).toFixed(2)}s`);
   if (member) {
     const vol = document.createElement('input');
     vol.type = 'range';

@@ -236,7 +236,8 @@ function avatarHead(a) {
   const { sx, sy, dy } = bodyOf(a).head;
   // Escala em volta do centro da cabeça (80,66): chapéu e rosto acompanham.
   const transform = `translate(80 ${66 + dy}) scale(${sx} ${sy}) translate(-80 -66)`;
-  return `<g transform="${transform}">
+  // .av-head: o CSS solta e balança a cabeça quando a pessoa fala.
+  return `<g class="av-head"><g transform="${transform}">
     <ellipse cx="80" cy="66" rx="43" ry="37" fill="${a.skin}" stroke="${INK}" stroke-width="3"/>
     ${avatarTop(a)}
     <ellipse cx="67" cy="62" rx="12" ry="14" fill="#fff" stroke="${INK}" stroke-width="2"/>
@@ -249,7 +250,7 @@ function avatarHead(a) {
       <path d="M70 96 Q80 108 90 96 Q80 90 70 96Z" fill="#ff5c7a"/>
       <path d="M66 82 Q80 86 94 82 L93 86 Q80 89 67 86 Z" fill="#fff"/>
     </g>
-  </g>`;
+  </g></g>`;
 }
 
 // id único por SVG: o Chrome resolve url(#id) pelo primeiro do documento, e

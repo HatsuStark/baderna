@@ -235,8 +235,22 @@ button.chip:disabled { opacity: 1; }
 }
 .seat.speaking .aura, .seat.speaking .ring { opacity: 1; }
 .seat.speaking svg.avatar-seat { filter: drop-shadow(3px 4px 0 rgba(0, 0, 0, .55)) drop-shadow(0 0 12px rgba(25, 240, 255, .6)); }
-.seat.speaking .m-open { display: inline; }
-.seat.speaking .m-closed { display: none; }
+.seat.loud .m-open { display: inline; }
+.seat.loud .m-closed { display: none; }
+
+/* Falando: a cabeça se solta do corpo e balança em volta do queixo. */
+.av-head { transform-box: fill-box; transform-origin: 50% 100%; transition: transform .2s ease-out; }
+.seat.speaking .av-head, .seat.preview:hover .av-head {
+  animation: head-bob .38s ease-in-out infinite alternate;
+  animation-delay: var(--bob-delay, 0s);
+}
+@keyframes head-bob {
+  from { transform: translateY(-11px) rotate(-7deg); }
+  to { transform: translateY(-17px) rotate(7deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seat.speaking .av-head, .seat.preview:hover .av-head { animation: none; transform: translateY(-8px); }
+}
 
 .seat .tag {
   margin-top: 2px; font-family: var(--marker); font-size: 17px; letter-spacing: .5px;
