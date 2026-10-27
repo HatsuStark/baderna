@@ -13,50 +13,76 @@ const AVATAR_PALETTE = [
 
 // Camisas que lembram os times pelas cores e listras, sem escudo nem nome.
 // main: cor principal (usada nas cadeiras); swatch: CSS do botão no editor;
-// draw: listras dentro do recorte do tronco.
+// draw(a, t): listras dentro do recorte do tronco; t = altura do ombro, pra
+// gola acompanhar o tipo de corpo. A área cobre o tronco mais largo.
+const KIT_AREA = '<rect x="0" y="80" width="160" height="100" fill="FILL"/>';
+const area = (fill) => KIT_AREA.replace('FILL', fill);
+const range = (from, to, step) => Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
+const vCollar = (t) => `<path d="M66 ${t} L80 ${t + 16} L94 ${t}" fill="none" stroke="#f8f9fa" stroke-width="4"/>`;
+
 const KITS = {
-  'lisa': { main: null, swatch: 'linear-gradient(135deg, #ff2bd6, #19f0ff)', draw: (a) => `<rect x="30" y="96" width="100" height="60" fill="${a.shirt}"/>` },
+  'lisa': { main: null, swatch: 'linear-gradient(135deg, #ff2bd6, #19f0ff)', draw: (a) => area(a.shirt) },
   'rubro-negra': {
     main: '#d1001f', swatch: 'repeating-linear-gradient(0deg, #d1001f 0 5px, #111 5px 10px)',
-    draw: () => `<rect x="30" y="96" width="100" height="60" fill="#111"/>${[98, 110, 122, 134, 146].map((y) => `<rect x="30" y="${y}" width="100" height="6" fill="#d1001f"/>`).join('')}`,
+    draw: () => area('#111') + range(86, 170, 12).map((y) => `<rect x="0" y="${y}" width="160" height="6" fill="#d1001f"/>`).join(''),
   },
   'alvinegra': {
     main: '#212529', swatch: 'repeating-linear-gradient(90deg, #111 0 5px, #f8f9fa 5px 10px)',
-    draw: () => `<rect x="30" y="96" width="100" height="60" fill="#f8f9fa"/>${[36, 48, 60, 72, 84, 96, 108, 120].map((x) => `<rect x="${x}" y="96" width="6" height="60" fill="#111"/>`).join('')}`,
+    draw: () => area('#f8f9fa') + range(12, 148, 12).map((x) => `<rect x="${x}" y="80" width="6" height="100" fill="#111"/>`).join(''),
   },
   'tricolor faixa': {
     main: '#d1001f', swatch: 'linear-gradient(#f8f9fa 0 35%, #d1001f 35% 50%, #f8f9fa 50% 55%, #111 55% 70%, #f8f9fa 70%)',
-    draw: () => '<rect x="30" y="96" width="100" height="60" fill="#f8f9fa"/><rect x="30" y="110" width="100" height="7" fill="#d1001f"/><rect x="30" y="122" width="100" height="7" fill="#111"/>',
+    draw: (a, t) => area('#f8f9fa') + `<rect x="0" y="${t + 12}" width="160" height="7" fill="#d1001f"/><rect x="0" y="${t + 24}" width="160" height="7" fill="#111"/>`,
   },
-  'verdão': {
-    main: '#0b6b3a', swatch: '#0b6b3a',
-    draw: () => '<rect x="30" y="96" width="100" height="60" fill="#0b6b3a"/><path d="M66 98 L80 114 L94 98" fill="none" stroke="#f8f9fa" stroke-width="4"/>',
-  },
+  'verdão': { main: '#0b6b3a', swatch: '#0b6b3a', draw: (a, t) => area('#0b6b3a') + vCollar(t) },
   'faixa diagonal': {
     main: '#212529', swatch: 'linear-gradient(135deg, #111 0 40%, #f8f9fa 40% 60%, #111 60%)',
-    draw: () => '<rect x="30" y="96" width="100" height="60" fill="#111"/><path d="M40 96 L62 96 L130 140 L130 156 L108 156 Z" fill="#f8f9fa"/>',
+    draw: (a, t) => area('#111') + `<path d="M30 ${t - 4} L56 ${t - 4} L140 ${t + 52} L140 180 L110 180 Z" fill="#f8f9fa"/>`,
   },
   'tricolor grená': {
     main: '#7a1430', swatch: 'repeating-linear-gradient(90deg, #7a1430 0 6px, #fff 6px 7px, #0b6b3a 7px 13px, #fff 13px 14px)',
-    draw: () => `<rect x="30" y="96" width="100" height="60" fill="#7a1430"/>${[40, 64, 88, 112].map((x) =>
-      `<rect x="${x - 2}" y="96" width="14" height="60" fill="#f8f9fa"/><rect x="${x}" y="96" width="10" height="60" fill="#0b6b3a"/>`).join('')}`,
+    draw: () => area('#7a1430') + range(16, 136, 24).map((x) =>
+      `<rect x="${x - 2}" y="80" width="14" height="100" fill="#f8f9fa"/><rect x="${x}" y="80" width="10" height="100" fill="#0b6b3a"/>`).join(''),
   },
-  'colorada': {
-    main: '#d1001f', swatch: '#d1001f',
-    draw: () => '<rect x="30" y="96" width="100" height="60" fill="#d1001f"/><path d="M66 98 L80 114 L94 98" fill="none" stroke="#f8f9fa" stroke-width="4"/>',
-  },
+  'colorada': { main: '#d1001f', swatch: '#d1001f', draw: (a, t) => area('#d1001f') + vCollar(t) },
   'celeste': {
     main: '#1c3faa', swatch: '#1c3faa',
-    draw: () => '<rect x="30" y="96" width="100" height="60" fill="#1c3faa"/><path d="M66 98 L80 114 L94 98" fill="none" stroke="#f8f9fa" stroke-width="4"/><path d="M40 130 L46 98 M120 130 L114 98" stroke="#f8f9fa" stroke-width="3"/>',
+    draw: (a, t) => area('#1c3faa') + vCollar(t) + `<path d="M0 ${t + 30} H160" stroke="#f8f9fa" stroke-width="2" opacity=".5"/>`,
   },
   'tricolor gaúcha': {
     main: '#0d7fd1', swatch: 'repeating-linear-gradient(90deg, #0d7fd1 0 5px, #111 5px 10px, #fff 10px 11px)',
-    draw: () => `<rect x="30" y="96" width="100" height="60" fill="#0d7fd1"/>${[36, 52, 68, 84, 100, 116].map((x) =>
-      `<rect x="${x}" y="96" width="7" height="60" fill="#111"/><rect x="${x + 7}" y="96" width="2" height="60" fill="#f8f9fa"/>`).join('')}`,
+    draw: () => area('#0d7fd1') + range(4, 148, 16).map((x) =>
+      `<rect x="${x}" y="80" width="7" height="100" fill="#111"/><rect x="${x + 7}" y="80" width="2" height="100" fill="#f8f9fa"/>`).join(''),
+  },
+};
+
+// Tipos de corpo: formato do tronco, mãos e ajuste da cabeça (escala e
+// altura). Pernas e cadeira não mudam, então todos sentam igual.
+const BODIES = {
+  'padrão': {
+    torso: 'M46 98 L114 98 L124 150 L36 150 Z', top: 98,
+    hands: [[40, 132, 10], [120, 132, 10]], head: { sx: 1, sy: 1, dy: 0 },
+  },
+  'gordinho': {
+    torso: 'M38 94 Q80 82 122 94 Q156 124 136 154 L24 154 Q4 124 38 94 Z', top: 92,
+    hands: [[14, 136, 11], [146, 136, 11]], head: { sx: 1.2, sy: 1.04, dy: 3 },
+  },
+  'magrelo': {
+    torso: 'M58 90 L102 90 L106 150 L54 150 Z', top: 90, neck: true,
+    hands: [[48, 130, 8], [112, 130, 8]], head: { sx: 0.88, sy: 1.08, dy: -10 },
+  },
+  'baixinho': {
+    torso: 'M52 116 L108 116 L116 150 L44 150 Z', top: 116,
+    hands: [[42, 140, 9], [118, 140, 9]], head: { sx: 0.86, sy: 0.86, dy: 20 },
+  },
+  'fortão': {
+    torso: 'M26 100 L134 100 L114 150 L46 150 Z', top: 100, shoulders: true,
+    hands: [[16, 128, 14], [144, 128, 14]], head: { sx: 0.88, sy: 0.9, dy: 6 },
   },
 };
 
 const AVATAR_OPTIONS = {
+  body: Object.keys(BODIES),
   skin: ['#f5d0b0', '#f2c9a0', '#e9b98f', '#c68a5e', '#8d5a3b', '#5c3a24'],
   top: ['nada', 'gorro', 'boné', 'capuz', 'moicano', 'pompons', 'espetado'],
   topColor: [...AVATAR_PALETTE, '#2b1a12', '#c9a227'],
@@ -69,13 +95,13 @@ const AVATAR_OPTIONS = {
 };
 
 const AVATAR_LABELS = {
-  skin: 'Pele', top: 'Cabelo / chapéu', topColor: 'Cor do topo e das mãos', kit: 'Camisa',
+  body: 'Corpo', skin: 'Pele', top: 'Cabelo / chapéu', topColor: 'Cor do topo e das mãos', kit: 'Camisa',
   shirt: 'Cor da camisa lisa', pants: 'Calça', extra: 'Acessório', symbol: 'Número / estampa', chair: 'Cadeira',
 };
 
 function defaultAvatar() {
   return {
-    skin: '#f2c9a0', top: 'gorro', topColor: '#ff2bd6', kit: 'lisa', shirt: '#19f0ff',
+    body: 'padrão', skin: '#f2c9a0', top: 'gorro', topColor: '#ff2bd6', kit: 'lisa', shirt: '#19f0ff',
     pants: '#343a40', extra: 'nada', symbol: 'estrela', chair: 'puff',
   };
 }
@@ -202,8 +228,15 @@ function avatarSymbol(a) {
   }
 }
 
+function bodyOf(a) {
+  return BODIES[a.body] ?? BODIES['padrão'];
+}
+
 function avatarHead(a) {
-  return `
+  const { sx, sy, dy } = bodyOf(a).head;
+  // Escala em volta do centro da cabeça (80,66): chapéu e rosto acompanham.
+  const transform = `translate(80 ${66 + dy}) scale(${sx} ${sy}) translate(-80 -66)`;
+  return `<g transform="${transform}">
     <ellipse cx="80" cy="66" rx="43" ry="37" fill="${a.skin}" stroke="${INK}" stroke-width="3"/>
     ${avatarTop(a)}
     <ellipse cx="67" cy="62" rx="12" ry="14" fill="#fff" stroke="${INK}" stroke-width="2"/>
@@ -215,10 +248,9 @@ function avatarHead(a) {
       <path d="M62 80 Q80 114 98 80 Q80 86 62 80 Z" fill="#3b0d14" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
       <path d="M70 96 Q80 108 90 96 Q80 90 70 96Z" fill="#ff5c7a"/>
       <path d="M66 82 Q80 86 94 82 L93 86 Q80 89 67 86 Z" fill="#fff"/>
-    </g>`;
+    </g>
+  </g>`;
 }
-
-const TORSO = 'M46 98 L114 98 L124 150 L36 150 Z';
 
 // id único por SVG: o Chrome resolve url(#id) pelo primeiro do documento, e
 // se esse estiver escondido (lobby durante a sala) o recorte some.
@@ -228,16 +260,23 @@ function avatarBody(a) {
   const clipId = `av-torso-${++avatarUid}`;
   const hands = a.topColor;
   const kit = KITS[a.kit] ?? KITS.lisa;
+  const body = bodyOf(a);
+  const t = body.top;
+  const shoulders = body.shoulders
+    ? `<circle cx="30" cy="108" r="17" fill="${kitMain(a)}" stroke="${INK}" stroke-width="3"/>
+       <circle cx="130" cy="108" r="17" fill="${kitMain(a)}" stroke="${INK}" stroke-width="3"/>`
+    : '';
+  const neck = body.neck ? `<rect x="72" y="${t - 14}" width="16" height="18" fill="${a.skin}" stroke="${INK}" stroke-width="2.5"/>` : '';
   return `
-    <defs><clipPath id="${clipId}"><path d="${TORSO}"/></clipPath></defs>
-    <g clip-path="url(#${clipId})">${kit.draw(a)}</g>
-    <path d="${TORSO}" fill="none" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    ${neck}${shoulders}
+    <defs><clipPath id="${clipId}"><path d="${body.torso}"/></clipPath></defs>
+    <g clip-path="url(#${clipId})">${kit.draw(a, t)}</g>
+    <path d="${body.torso}" fill="none" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
     ${a.kit === 'lisa'
-      ? `<path d="M80 100 V150" stroke="${INK}" stroke-width="2" opacity=".35"/>`
-      : `<path d="M66 98 Q80 106 94 98" fill="none" stroke="${INK}" stroke-width="2.5"/>`}
+      ? `<path d="M80 ${t + 2} V150" stroke="${INK}" stroke-width="2" opacity=".35"/>`
+      : `<path d="M66 ${t} Q80 ${t + 8} 94 ${t}" fill="none" stroke="${INK}" stroke-width="2.5"/>`}
     ${avatarSymbol(a)}
-    <circle cx="40" cy="132" r="10" fill="${hands}" stroke="${INK}" stroke-width="2.5"/>
-    <circle cx="120" cy="132" r="10" fill="${hands}" stroke="${INK}" stroke-width="2.5"/>
+    ${body.hands.map(([cx, cy, r]) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${hands}" stroke="${INK}" stroke-width="2.5"/>`).join('')}
     <rect x="50" y="146" width="26" height="22" rx="4" fill="${a.pants}" stroke="${INK}" stroke-width="3"/>
     <rect x="84" y="146" width="26" height="22" rx="4" fill="${a.pants}" stroke="${INK}" stroke-width="3"/>
     <ellipse cx="60" cy="172" rx="16" ry="7" fill="${INK}" stroke="${INK}" stroke-width="2.5"/>
