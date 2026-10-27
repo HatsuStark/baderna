@@ -23,6 +23,8 @@
       "preload.js",
       "renderer/**",
       "build/icon.png",
+      "build/tray.png",
+      "build/tray-muted.png",
       "node_modules/peerjs/dist/peerjs.min.js",
       "package.json"
     ],

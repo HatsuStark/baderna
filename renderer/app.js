@@ -1404,6 +1404,18 @@ function updateCount() {
   if (!state.room) return;
   const n = state.members.size + 1;
   $('count-chip').textContent = `${n} na baderna`;
+  syncTray();
+}
+
+// Estado mostrado no ícone da bandeja (tooltip, menu e selo de mudo).
+function syncTray() {
+  window.baderna?.setTrayState({
+    inRoom: !!state.mainPeer && !!state.room,
+    muted: state.muted,
+    deaf: state.deaf,
+    room: (state.room && savedRoom(state.room)?.name) || state.room || '',
+    count: state.members.size + 1,
+  });
 }
 
 function updateDock() {
@@ -1413,6 +1425,7 @@ function updateDock() {
   $('btn-deaf').title = state.deaf ? 'Voltar a ouvir' : 'Silenciar tudo';
   $('btn-share').classList.toggle('on', !!state.screen);
   $('btn-share').title = state.screen ? 'Parar de compartilhar' : 'Compartilhar tela';
+  syncTray();
 }
 
 function updateThemeControls() {
@@ -1539,6 +1552,7 @@ function showLobby() {
   $('room-view').hidden = true;
   $('lobby').hidden = false;
   $('titlebar-room').textContent = '';
+  syncTray();
   renderLobbySeat();
   renderSavedRooms();
 }
@@ -1627,6 +1641,7 @@ function updateSaveChip() {
   $('save-chip').textContent = saved ? `★ ${saved.name}` : '☆ salvar sala';
   $('save-chip').classList.toggle('is-saved', !!saved);
   $('titlebar-room').textContent = !state.room ? '' : saved ? saved.name : `sala ${state.room}`;
+  syncTray();
 }
 
 function openSaveDialog() {
@@ -1760,6 +1775,20 @@ window.addEventListener('beforeunload', () => {
   broadcast({ type: 'bye' });
   destroyPeer(state.beacon);
 });
+// Bandeja: ações do menu e a opção de fechar pra bandeja.
+window.baderna?.onTrayAction((action) => {
+  if (!state.mainPeer) return;
+  if (action === 'mute') toggleMute();
+  else if (action === 'deaf') toggleDeaf();
+  else if (action === 'leave') leave();
+});
+$('close-to-tray').checked = loadPref('closeToTray') !== 'off';
+window.baderna?.setTraySettings({ closeToTray: $('close-to-tray').checked });
+$('close-to-tray').addEventListener('change', () => {
+  savePref('closeToTray', $('close-to-tray').checked ? 'on' : 'off');
+  window.baderna?.setTraySettings({ closeToTray: $('close-to-tray').checked });
+});
+
 document.addEventListener('fullscreenchange', () => {
   document.body.classList.toggle('is-fullscreen', !!document.fullscreenElement);
 });

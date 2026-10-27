@@ -9,6 +9,9 @@ function subscribe(channel, cb) {
 
 contextBridge.exposeInMainWorld('baderna', {
   setTitlebarColor: (color) => ipcRenderer.invoke('titlebar:color', color),
+  setTrayState: (s) => ipcRenderer.send('tray:state', s),
+  setTraySettings: (s) => ipcRenderer.send('tray:settings', s),
+  onTrayAction: (cb) => subscribe('tray:action', cb),
   listScreens: () => ipcRenderer.invoke('screen:list'),
   selectScreen: (id) => ipcRenderer.invoke('screen:select', id),
   startScreenAudio: (sourceId) => ipcRenderer.invoke('screen-audio:start', sourceId),

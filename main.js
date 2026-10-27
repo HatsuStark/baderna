@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, desktopCapturer, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, session, desktopCapturer, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -16,6 +16,12 @@ if (profileArg) {
   app.setPath('userData', path.join(app.getPath('userData'), `profile-${profile}`));
 }
 
+// Uma instância só: abrir o atalho com o app na bandeja traz a janela de
+// volta. Perfis de teste (--profile) ficam livres pra abrir várias.
+const gotLock = !!profileArg || app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
+app.on('second-instance', () => showWindow());
+
 // Tela/janela escolhida no seletor do renderer; consumida pelo próximo getDisplayMedia.
 let pendingSourceId = null;
 
@@ -23,6 +29,8 @@ let pendingSourceId = null;
 // (titleBarOverlay); a faixa em volta é HTML. A cor acompanha o tema da sala.
 const TITLEBAR_HEIGHT = 34;
 const TITLEBAR_SYMBOL = '#e8e6ee';
+
+let mainWindow = null;
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -43,7 +51,91 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  mainWindow = win;
+
+  // Fechar esconde na bandeja (dá pra desligar nas configurações): quem está
+  // numa sala continua conversando. Fechar de verdade é pelo menu da bandeja.
+  win.on('close', (e) => {
+    if (quitting || !closeToTray || !tray) return;
+    e.preventDefault();
+    win.hide();
+    if (!trayHintShown) {
+      trayHintShown = true;
+      tray.displayBalloon({
+        iconType: 'info',
+        title: 'O Baderna continua aberto',
+        content: trayState.inRoom
+          ? 'Você continua na sala. Clique no ícone da bandeja pra voltar.'
+          : 'Clique no ícone da bandeja pra voltar.',
+      });
+    }
+  });
+  win.on('closed', () => { mainWindow = null; });
 }
+
+// ---------- Bandeja ----------
+
+let tray = null;
+let quitting = false;
+let closeToTray = true;
+let trayHintShown = false;
+let trayState = { inRoom: false, muted: false, deaf: false, room: '', count: 0 };
+
+function showWindow() {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function trayAction(action) {
+  mainWindow?.webContents.send('tray:action', action);
+}
+
+function trayImage() {
+  const off = trayState.inRoom && (trayState.muted || trayState.deaf);
+  return nativeImage.createFromPath(path.join(__dirname, 'build', off ? 'tray-muted.png' : 'tray.png'));
+}
+
+function updateTray() {
+  if (!tray) return;
+  const s = trayState;
+  tray.setImage(trayImage());
+  tray.setToolTip(s.inRoom
+    ? `Baderna · ${s.room} · ${s.count} na sala${s.deaf ? ' · surdo' : s.muted ? ' · mutado' : ''}`
+    : 'Baderna');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Abrir Baderna', click: showWindow },
+    { type: 'separator' },
+    { label: s.muted ? 'Desmutar microfone' : 'Mutar microfone', enabled: s.inRoom, click: () => trayAction('mute') },
+    { label: s.deaf ? 'Voltar a ouvir' : 'Silenciar tudo', enabled: s.inRoom, click: () => trayAction('deaf') },
+    { label: 'Sair da sala', enabled: s.inRoom, click: () => trayAction('leave') },
+    { type: 'separator' },
+    { label: 'Fechar o Baderna', click: () => { quitting = true; app.quit(); } },
+  ]));
+}
+
+function createTray() {
+  tray = new Tray(trayImage());
+  tray.on('click', showWindow);
+  updateTray();
+}
+
+ipcMain.on('tray:state', (_e, s) => {
+  if (!s || typeof s !== 'object') return;
+  trayState = {
+    inRoom: !!s.inRoom,
+    muted: !!s.muted,
+    deaf: !!s.deaf,
+    room: String(s.room ?? '').slice(0, 40),
+    count: Number.isFinite(s.count) ? s.count : 0,
+  };
+  updateTray();
+});
+
+ipcMain.on('tray:settings', (_e, s) => {
+  if (s && typeof s.closeToTray === 'boolean') closeToTray = s.closeToTray;
+});
 
 ipcMain.handle('titlebar:color', (event, color) => {
   if (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)) return;
@@ -115,9 +207,13 @@ ipcMain.handle('screen-audio:start', (event, sourceId) => {
 });
 
 ipcMain.handle('screen-audio:stop', stopScreenAudio);
-app.on('before-quit', stopScreenAudio);
+app.on('before-quit', () => {
+  quitting = true;
+  stopScreenAudio();
+});
 
 app.whenReady().then(() => {
+  if (!gotLock) return;
   // Libera só mic/câmera, saída de som, captura de tela (a fonte é decidida
   // no setDisplayMediaRequestHandler abaixo), tela cheia de elemento e
   // escrita na área de transferência (copiar o código da sala); nega o resto.
@@ -136,6 +232,7 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+  createTray();
 });
 
 app.on('window-all-closed', () => app.quit());
