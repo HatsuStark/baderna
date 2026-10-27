@@ -1397,6 +1397,12 @@ function renderAvatarEditor() {
       btn.className = isColor ? 'swatch' : 'pill';
       if (isColor) btn.style.background = value;
       else btn.textContent = value;
+      if (key === 'kit') {
+        const chip = document.createElement('span');
+        chip.className = 'kit-chip';
+        chip.style.background = value === 'lisa' ? avatarDraft.shirt : KITS[value].swatch;
+        btn.prepend(chip);
+      }
       btn.title = value;
       btn.classList.toggle('selected', avatarDraft[key] === value);
       btn.addEventListener('click', () => {

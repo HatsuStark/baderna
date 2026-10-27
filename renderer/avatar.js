@@ -11,27 +11,77 @@ const AVATAR_PALETTE = [
   '#7048e8', '#364fc7', '#2f9e44', '#f8f9fa', '#495057', '#212529',
 ];
 
+// Camisas que lembram os times pelas cores e listras, sem escudo nem nome.
+// main: cor principal (usada nas cadeiras); swatch: CSS do botão no editor;
+// draw: listras dentro do recorte do tronco.
+const KITS = {
+  'lisa': { main: null, swatch: 'linear-gradient(135deg, #ff2bd6, #19f0ff)', draw: (a) => `<rect x="30" y="96" width="100" height="60" fill="${a.shirt}"/>` },
+  'rubro-negra': {
+    main: '#d1001f', swatch: 'repeating-linear-gradient(0deg, #d1001f 0 5px, #111 5px 10px)',
+    draw: () => `<rect x="30" y="96" width="100" height="60" fill="#111"/>${[98, 110, 122, 134, 146].map((y) => `<rect x="30" y="${y}" width="100" height="6" fill="#d1001f"/>`).join('')}`,
+  },
+  'alvinegra': {
+    main: '#212529', swatch: 'repeating-linear-gradient(90deg, #111 0 5px, #f8f9fa 5px 10px)',
+    draw: () => `<rect x="30" y="96" width="100" height="60" fill="#f8f9fa"/>${[36, 48, 60, 72, 84, 96, 108, 120].map((x) => `<rect x="${x}" y="96" width="6" height="60" fill="#111"/>`).join('')}`,
+  },
+  'tricolor faixa': {
+    main: '#d1001f', swatch: 'linear-gradient(#f8f9fa 0 35%, #d1001f 35% 50%, #f8f9fa 50% 55%, #111 55% 70%, #f8f9fa 70%)',
+    draw: () => '<rect x="30" y="96" width="100" height="60" fill="#f8f9fa"/><rect x="30" y="110" width="100" height="7" fill="#d1001f"/><rect x="30" y="122" width="100" height="7" fill="#111"/>',
+  },
+  'verdão': {
+    main: '#0b6b3a', swatch: '#0b6b3a',
+    draw: () => '<rect x="30" y="96" width="100" height="60" fill="#0b6b3a"/><path d="M66 98 L80 114 L94 98" fill="none" stroke="#f8f9fa" stroke-width="4"/>',
+  },
+  'faixa diagonal': {
+    main: '#212529', swatch: 'linear-gradient(135deg, #111 0 40%, #f8f9fa 40% 60%, #111 60%)',
+    draw: () => '<rect x="30" y="96" width="100" height="60" fill="#111"/><path d="M40 96 L62 96 L130 140 L130 156 L108 156 Z" fill="#f8f9fa"/>',
+  },
+  'tricolor grená': {
+    main: '#7a1430', swatch: 'repeating-linear-gradient(90deg, #7a1430 0 6px, #fff 6px 7px, #0b6b3a 7px 13px, #fff 13px 14px)',
+    draw: () => `<rect x="30" y="96" width="100" height="60" fill="#7a1430"/>${[40, 64, 88, 112].map((x) =>
+      `<rect x="${x - 2}" y="96" width="14" height="60" fill="#f8f9fa"/><rect x="${x}" y="96" width="10" height="60" fill="#0b6b3a"/>`).join('')}`,
+  },
+  'colorada': {
+    main: '#d1001f', swatch: '#d1001f',
+    draw: () => '<rect x="30" y="96" width="100" height="60" fill="#d1001f"/><path d="M66 98 L80 114 L94 98" fill="none" stroke="#f8f9fa" stroke-width="4"/>',
+  },
+  'celeste': {
+    main: '#1c3faa', swatch: '#1c3faa',
+    draw: () => '<rect x="30" y="96" width="100" height="60" fill="#1c3faa"/><path d="M66 98 L80 114 L94 98" fill="none" stroke="#f8f9fa" stroke-width="4"/><path d="M40 130 L46 98 M120 130 L114 98" stroke="#f8f9fa" stroke-width="3"/>',
+  },
+  'tricolor gaúcha': {
+    main: '#0d7fd1', swatch: 'repeating-linear-gradient(90deg, #0d7fd1 0 5px, #111 5px 10px, #fff 10px 11px)',
+    draw: () => `<rect x="30" y="96" width="100" height="60" fill="#0d7fd1"/>${[36, 52, 68, 84, 100, 116].map((x) =>
+      `<rect x="${x}" y="96" width="7" height="60" fill="#111"/><rect x="${x + 7}" y="96" width="2" height="60" fill="#f8f9fa"/>`).join('')}`,
+  },
+};
+
 const AVATAR_OPTIONS = {
   skin: ['#f5d0b0', '#f2c9a0', '#e9b98f', '#c68a5e', '#8d5a3b', '#5c3a24'],
   top: ['nada', 'gorro', 'boné', 'capuz', 'moicano', 'pompons', 'espetado'],
   topColor: [...AVATAR_PALETTE, '#2b1a12', '#c9a227'],
+  kit: Object.keys(KITS),
   shirt: AVATAR_PALETTE,
   pants: ['#343a40', '#1864ab', '#2b2b2b', '#5c3d2e', '#7048e8', '#2f9e44'],
-  extra: ['nada', 'óculos neon', 'fone', 'bochecha', 'óculos'],
-  symbol: ['nada', 'estrela', 'raio', 'coração', 'caveira'],
-  chair: ['puff', 'trono', 'caixote', 'pneus', 'boteco', 'sofá', 'cooler'],
+  extra: ['nada', 'headset', 'faixa', 'pintura', 'óculos neon', 'fone', 'bochecha', 'óculos'],
+  symbol: ['nada', '10', '9', '7', '11', '1', 'bola', 'controle', 'troféu', 'estrela', 'raio', 'coração', 'caveira'],
+  chair: ['puff', 'trono', 'banco de reserva', 'bola', 'cadeira de estádio', 'caixote', 'pneus', 'boteco', 'sofá', 'cooler'],
 };
 
 const AVATAR_LABELS = {
-  skin: 'Pele', top: 'Cabelo / chapéu', topColor: 'Cor do topo', shirt: 'Roupa',
-  pants: 'Calça', extra: 'Acessório', symbol: 'Estampa', chair: 'Cadeira',
+  skin: 'Pele', top: 'Cabelo / chapéu', topColor: 'Cor do topo e das mãos', kit: 'Camisa',
+  shirt: 'Cor da camisa lisa', pants: 'Calça', extra: 'Acessório', symbol: 'Número / estampa', chair: 'Cadeira',
 };
 
 function defaultAvatar() {
   return {
-    skin: '#f2c9a0', top: 'gorro', topColor: '#ff2bd6', shirt: '#19f0ff',
+    skin: '#f2c9a0', top: 'gorro', topColor: '#ff2bd6', kit: 'lisa', shirt: '#19f0ff',
     pants: '#343a40', extra: 'nada', symbol: 'estrela', chair: 'puff',
   };
+}
+
+function kitMain(a) {
+  return KITS[a.kit]?.main ?? a.shirt;
 }
 
 function randomAvatar() {
@@ -88,6 +138,23 @@ function avatarExtra(a) {
       return `<path d="M36 64 Q36 14 80 14 Q124 14 124 64" fill="none" stroke="${INK}" stroke-width="6"/>
         <rect x="28" y="56" width="16" height="26" rx="6" fill="${a.topColor}" stroke="${INK}" stroke-width="3"/>
         <rect x="116" y="56" width="16" height="26" rx="6" fill="${a.topColor}" stroke="${INK}" stroke-width="3"/>`;
+    case 'headset':
+      return `<path d="M34 66 Q34 12 80 12 Q126 12 126 66" fill="none" stroke="${INK}" stroke-width="7"/>
+        <path d="M34 66 Q34 12 80 12 Q126 12 126 66" fill="none" stroke="${a.topColor}" stroke-width="3"/>
+        <rect x="24" y="52" width="20" height="32" rx="8" fill="#212529" stroke="${INK}" stroke-width="3"/>
+        <rect x="116" y="52" width="20" height="32" rx="8" fill="#212529" stroke="${INK}" stroke-width="3"/>
+        <circle cx="34" cy="68" r="5" fill="${a.topColor}"/><circle cx="126" cy="68" r="5" fill="${a.topColor}"/>
+        <path d="M36 80 Q42 98 62 94" fill="none" stroke="${INK}" stroke-width="3.5" stroke-linecap="round"/>
+        <circle cx="64" cy="94" r="4.5" fill="${a.topColor}" stroke="${INK}" stroke-width="2"/>`;
+    case 'faixa':
+      return `<rect x="37" y="36" width="86" height="11" rx="3" fill="${a.topColor}" stroke="${INK}" stroke-width="2.5"/>
+        <path d="M120 40 L134 34 L132 48 Z" fill="${a.topColor}" stroke="${INK}" stroke-width="2"/>`;
+    case 'pintura': {
+      const c = kitMain(a);
+      return `<path d="M46 80 L60 76 M46 87 L60 83" stroke="${c}" stroke-width="4" stroke-linecap="round"/>
+        <path d="M100 76 L114 80 M100 83 L114 87" stroke="${c}" stroke-width="4" stroke-linecap="round"/>
+        <path d="M46 83.5 L60 79.5 M100 79.5 L114 83.5" stroke="#f8f9fa" stroke-width="2.5" stroke-linecap="round"/>`;
+    }
     case 'bochecha':
       return `<ellipse cx="54" cy="80" rx="6" ry="3.5" fill="#ff6b8b" opacity=".6"/>
         <ellipse cx="106" cy="80" rx="6" ry="3.5" fill="#ff6b8b" opacity=".6"/>`;
@@ -101,8 +168,26 @@ function avatarExtra(a) {
 }
 
 function avatarSymbol(a) {
-  const fill = a.shirt === '#f8f9fa' ? INK : '#fff';
+  const fill = a.kit === 'lisa' && a.shirt === '#f8f9fa' ? INK : '#fff';
+  if (/^\d+$/.test(a.symbol)) {
+    return `<text x="80" y="138" text-anchor="middle" font-family="Chakra Petch" font-weight="700" font-size="25"
+      fill="${fill}" stroke="${INK}" stroke-width="1.6" paint-order="stroke">${a.symbol}</text>`;
+  }
   switch (a.symbol) {
+    case 'bola':
+      return `<circle cx="80" cy="124" r="12" fill="#f8f9fa" stroke="${INK}" stroke-width="2"/>
+        <path d="M80 118 l5 3.6 -2 6 h-6 l-2 -6 z" fill="${INK}"/>
+        <path d="M80 112 V118 M85 121.6 L91.5 119 M83 127.6 L87 133.5 M77 127.6 L73 133.5 M75 121.6 L68.5 119" stroke="${INK}" stroke-width="1.5"/>`;
+    case 'controle':
+      return `<path d="M68 116 H92 Q100 116 101 126 L102 133 Q102 137 98 137 Q95 137 93 133 L91 129 H69 L67 133 Q65 137 62 137 Q58 137 58 133 L59 126 Q60 116 68 116 Z"
+        fill="${fill}" stroke="${INK}" stroke-width="1.6"/>
+        <path d="M68 121 V128 M64.5 124.5 H71.5" stroke="${INK}" stroke-width="2"/>
+        <circle cx="90" cy="122" r="2" fill="${INK}"/><circle cx="94" cy="126" r="2" fill="${INK}"/>`;
+    case 'troféu':
+      return `<path d="M70 112 H90 V120 Q90 130 80 131 Q70 130 70 120 Z" fill="#ffd43b" stroke="${INK}" stroke-width="1.6"/>
+        <path d="M70 115 H64 Q64 124 71 124 M90 115 H96 Q96 124 89 124" fill="none" stroke="${INK}" stroke-width="1.6"/>
+        <rect x="77" y="131" width="6" height="5" fill="#ffd43b" stroke="${INK}" stroke-width="1.2"/>
+        <rect x="72" y="136" width="16" height="4" fill="#ffd43b" stroke="${INK}" stroke-width="1.2"/>`;
     case 'estrela':
       return `<path d="M80 112 l4 9 10 1 -8 6 3 10 -9 -6 -9 6 3 -10 -8 -6 10 -1z" fill="${fill}"/>`;
     case 'raio':
@@ -133,11 +218,23 @@ function avatarHead(a) {
     </g>`;
 }
 
+const TORSO = 'M46 98 L114 98 L124 150 L36 150 Z';
+
+// id único por SVG: o Chrome resolve url(#id) pelo primeiro do documento, e
+// se esse estiver escondido (lobby durante a sala) o recorte some.
+let avatarUid = 0;
+
 function avatarBody(a) {
+  const clipId = `av-torso-${++avatarUid}`;
   const hands = a.topColor;
+  const kit = KITS[a.kit] ?? KITS.lisa;
   return `
-    <path d="M46 98 L114 98 L124 150 L36 150 Z" fill="${a.shirt}" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M80 100 V150" stroke="${INK}" stroke-width="2" opacity=".35"/>
+    <defs><clipPath id="${clipId}"><path d="${TORSO}"/></clipPath></defs>
+    <g clip-path="url(#${clipId})">${kit.draw(a)}</g>
+    <path d="${TORSO}" fill="none" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    ${a.kit === 'lisa'
+      ? `<path d="M80 100 V150" stroke="${INK}" stroke-width="2" opacity=".35"/>`
+      : `<path d="M66 98 Q80 106 94 98" fill="none" stroke="${INK}" stroke-width="2.5"/>`}
     ${avatarSymbol(a)}
     <circle cx="40" cy="132" r="10" fill="${hands}" stroke="${INK}" stroke-width="2.5"/>
     <circle cx="120" cy="132" r="10" fill="${hands}" stroke="${INK}" stroke-width="2.5"/>
@@ -147,8 +244,31 @@ function avatarBody(a) {
     <ellipse cx="100" cy="172" rx="16" ry="7" fill="${INK}" stroke="${INK}" stroke-width="2.5"/>`;
 }
 
-// back: atrás do boneco; front: na frente (assento, base).
+// back: atrás do boneco; front: na frente (assento, base). Cadeira que é
+// função recebe o avatar e usa a cor da camisa.
 const CHAIRS = {
+  'banco de reserva': (a) => ({
+    back: `<rect x="4" y="80" width="152" height="72" rx="12" fill="${kitMain(a)}" stroke="${INK}" stroke-width="3"/>
+      <rect x="14" y="88" width="132" height="10" rx="5" fill="#fff" opacity=".18"/>`,
+    front: `<rect x="2" y="148" width="156" height="20" rx="7" fill="#2b2b2b" stroke="${INK}" stroke-width="3"/>
+      <path d="M16 168 V204 M144 168 V204 M80 168 V204" stroke="#868e96" stroke-width="6" stroke-linecap="round"/>
+      <path d="M16 168 V204 M144 168 V204 M80 168 V204" stroke="${INK}" stroke-width="2" opacity=".4"/>`,
+  }),
+  'bola': () => ({
+    back: '',
+    front: `<circle cx="80" cy="178" r="36" fill="#f8f9fa" stroke="${INK}" stroke-width="3"/>
+      <path d="M80 166 l11 8 -4 13 h-14 l-4 -13 z" fill="${INK}"/>
+      <path d="M80 142 V166 M91 174 L114 166 M87 187 L100 206 M73 187 L60 206 M69 174 L46 166" stroke="${INK}" stroke-width="2.5"/>
+      <path d="M48 150 l10 4 -2 10 M112 150 l-10 4 2 10" fill="none" stroke="${INK}" stroke-width="2.5"/>`,
+  }),
+  'cadeira de estádio': (a) => ({
+    back: `<rect x="36" y="64" width="88" height="90" rx="16" fill="${kitMain(a)}" stroke="${INK}" stroke-width="3"/>
+      <rect x="66" y="72" width="28" height="14" rx="3" fill="#f8f9fa" stroke="${INK}" stroke-width="2"/>
+      <text x="80" y="83" text-anchor="middle" font-family="Chakra Petch" font-weight="700" font-size="11" fill="${INK}">12</text>`,
+    front: `<rect x="30" y="148" width="100" height="18" rx="7" fill="${kitMain(a)}" stroke="${INK}" stroke-width="3"/>
+      <rect x="0" y="170" width="160" height="36" fill="#3a3f47" stroke="${INK}" stroke-width="3"/>
+      <path d="M0 182 H160" stroke="#fff" stroke-width="2" opacity=".15"/>`,
+  }),
   'trono': {
     back: `<path d="M34 120 L30 6 Q80 -12 130 6 L126 120 Z" fill="#1d1b24" stroke="${INK}" stroke-width="3"/>
       <path d="M50 10 L54 116 M110 10 L106 116" stroke="#ff2bd6" stroke-width="7"/>
@@ -215,7 +335,8 @@ const CHAIRS = {
 // aparece (classe .speaking no pai), sem redesenhar a cada frame.
 function avatarSeatSvg(raw) {
   const a = sanitizeAvatar(raw);
-  const chair = CHAIRS[a.chair] ?? CHAIRS.puff;
+  const def = CHAIRS[a.chair] ?? CHAIRS.puff;
+  const chair = typeof def === 'function' ? def(a) : def;
   return `<svg class="avatar-seat" viewBox="0 -8 160 216" aria-hidden="true">
     <ellipse cx="80" cy="206" rx="70" ry="7" fill="#000" opacity=".45"/>
     ${chair.back}
