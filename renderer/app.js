@@ -519,6 +519,9 @@ function applyTheme(id) {
   state.theme = theme;
   $('wall').innerHTML = themeSvg(theme);
   document.documentElement.style.setProperty('--bg', THEMES[theme].bg);
+  // Faixa de título e botões do Windows na cor do tema.
+  document.documentElement.style.setProperty('--titlebar-bg', THEMES[theme].bg);
+  window.baderna?.setTitlebarColor(THEMES[theme].bg);
   $('theme-name').textContent = THEMES[theme].name;
   for (const btn of $('theme-grid').querySelectorAll('button')) {
     btn.classList.toggle('selected', btn.dataset.theme === theme);
@@ -1535,6 +1538,7 @@ function showRoom() {
 function showLobby() {
   $('room-view').hidden = true;
   $('lobby').hidden = false;
+  $('titlebar-room').textContent = '';
   renderLobbySeat();
   renderSavedRooms();
 }
@@ -1622,6 +1626,7 @@ function updateSaveChip() {
   const saved = state.room && savedRoom(state.room);
   $('save-chip').textContent = saved ? `★ ${saved.name}` : '☆ salvar sala';
   $('save-chip').classList.toggle('is-saved', !!saved);
+  $('titlebar-room').textContent = !state.room ? '' : saved ? saved.name : `sala ${state.room}`;
 }
 
 function openSaveDialog() {
@@ -1754,4 +1759,7 @@ for (const id of ['share-quality', 'share-audio']) $(id).addEventListener('chang
 window.addEventListener('beforeunload', () => {
   broadcast({ type: 'bye' });
   destroyPeer(state.beacon);
+});
+document.addEventListener('fullscreenchange', () => {
+  document.body.classList.toggle('is-fullscreen', !!document.fullscreenElement);
 });

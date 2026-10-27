@@ -26,6 +26,31 @@ body {
   font: 15px/1.45 'Chakra Petch', system-ui, sans-serif;
 }
 
+/* ---------- Barra de título (os botões do Windows ficam à direita) ---------- */
+
+:root { --titlebar-h: 34px; --titlebar-bg: #07070f; }
+body { padding-top: var(--titlebar-h); }
+.titlebar {
+  position: fixed; top: 0; left: 0; right: 0; height: var(--titlebar-h); z-index: 50;
+  display: flex; align-items: center; gap: 12px; padding: 0 150px 0 14px;
+  background: var(--titlebar-bg); -webkit-app-region: drag; user-select: none;
+}
+.titlebar::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; opacity: .7;
+  background: linear-gradient(90deg, transparent, var(--cyan) 20%, var(--magenta) 80%, transparent);
+}
+.titlebar-logo {
+  font-family: var(--marker); font-size: 17px; color: #fff; letter-spacing: .5px;
+  text-shadow: 0 0 8px rgba(255, 43, 214, .6), 1.5px 1.5px 0 var(--magenta);
+}
+.titlebar-room {
+  font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.titlebar-room:not(:empty)::before { content: '· '; color: var(--cyan); }
+/* Em tela cheia a faixa some: área de arrastar engoliria cliques no topo do vídeo. */
+body.is-fullscreen .titlebar { display: none; }
+
 /* ---------- Fundo ---------- */
 
 .wall { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
@@ -329,6 +354,7 @@ button.chip:disabled { opacity: 1; }
 dialog {
   background: rgba(20, 20, 27, .96); color: var(--text); border: 1px solid var(--line);
   border-radius: 18px; padding: 22px 24px; width: min(560px, 92vw);
+  max-height: calc(100vh - var(--titlebar-h) - 60px); overflow-y: auto; margin-top: calc(var(--titlebar-h) + 20px);
   box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
 }
 dialog.wide-dialog { width: min(920px, 94vw); }

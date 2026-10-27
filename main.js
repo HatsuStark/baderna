@@ -19,14 +19,21 @@ if (profileArg) {
 // Tela/janela escolhida no seletor do renderer; consumida pelo próximo getDisplayMedia.
 let pendingSourceId = null;
 
+// Barra de título própria: o Windows só desenha minimizar/maximizar/fechar
+// (titleBarOverlay); a faixa em volta é HTML. A cor acompanha o tema da sala.
+const TITLEBAR_HEIGHT = 34;
+const TITLEBAR_SYMBOL = '#e8e6ee';
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1024,
     minHeight: 700,
-    backgroundColor: '#1e1f22',
+    backgroundColor: '#07070f',
     autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#07070f', symbolColor: TITLEBAR_SYMBOL, height: TITLEBAR_HEIGHT },
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: {
       contextIsolation: true,
@@ -37,6 +44,11 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
+
+ipcMain.handle('titlebar:color', (event, color) => {
+  if (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)) return;
+  BrowserWindow.fromWebContents(event.sender)?.setTitleBarOverlay({ color, symbolColor: TITLEBAR_SYMBOL, height: TITLEBAR_HEIGHT });
+});
 
 ipcMain.handle('screen:list', async () => {
   const sources = await desktopCapturer.getSources({

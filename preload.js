@@ -8,6 +8,7 @@ function subscribe(channel, cb) {
 }
 
 contextBridge.exposeInMainWorld('baderna', {
+  setTitlebarColor: (color) => ipcRenderer.invoke('titlebar:color', color),
   listScreens: () => ipcRenderer.invoke('screen:list'),
   selectScreen: (id) => ipcRenderer.invoke('screen:select', id),
   startScreenAudio: (sourceId) => ipcRenderer.invoke('screen-audio:start', sourceId),
