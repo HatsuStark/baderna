@@ -23,7 +23,16 @@ const CHAT_MAX = 500;
 const NAME_MAX = 24;
 const CHAT_GROUP_MS = 2 * 60 * 1000;
 
-const AUDIO_CONSTRAINTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+// Processamento do Chrome no microfone; cada um liga/desliga nas configurações.
+const AUDIO_PROCESSING = {
+  noiseSuppression: 'Supressão de ruído',
+  echoCancellation: 'Cancelamento de eco',
+  autoGainControl: 'Ganho automático',
+};
+
+// Sensibilidade: escala do medidor e do limiar do portão, em dB.
+const GATE_DB_MIN = -70;
+const GATE_DB_MAX = -10;
 
 // Tela vai em mesh também: quem compartilha manda uma cópia pra cada um.
 const SHARE_PRESETS = {
@@ -86,7 +95,10 @@ const state = {
   theme: DEFAULT_THEME,
   mainPeer: null,
   beacon: null,
-  localStream: null,
+  localStream: null,  // microfone cru (mutar desliga esta trilha)
+  mic: null,          // { src, gate, dest }: microfone → portão → o que vai pros outros
+  sendStream: null,   // saída do portão: é isto que vai nas chamadas
+  gateOpen: true,
   myId: null,
   seq: 0,          // ordem de entrada; define quem herda o host
   nextSeq: 1,      // só usado pelo host
@@ -174,6 +186,7 @@ async function join() {
   try {
     setLobbyStatus('Abrindo microfone…');
     state.localStream = takePreviewStream() ?? await openMic($('mic').value);
+    await buildMicChain();
 
     setLobbyStatus('Conectando…');
     state.name = name;
@@ -253,7 +266,7 @@ async function teardown() {
   await state.audioCtx?.close().catch(() => {});
 
   Object.assign(state, {
-    room: null, mainPeer: null, beacon: null, localStream: null, myId: null,
+    room: null, mainPeer: null, beacon: null, localStream: null, mic: null, sendStream: null, gateOpen: true, myId: null,
     seq: 0, nextSeq: 1, hostId: null, muted: false, deaf: false, mutedBeforeDeaf: false, leaving: false,
     roster: new Map(), selfSeat: null, audioCtx: null, rafId: 0, lastChat: null, theme: DEFAULT_THEME,
   });
@@ -338,7 +351,10 @@ function wireMainPeer() {
     const member = upsertMember(conn.peer, { name, seq, avatar });
     attachConn(member, conn);
     // Só anuncia quem chegou depois de mim; o resto já estava aqui.
-    if (isNew && Number(seq) > state.seq) addSystem(narrate('arrived', { n: member.name }));
+    if (isNew && Number(seq) > state.seq) {
+      addSystem(narrate('arrived', { n: member.name }));
+      playBlip(true);
+    }
   });
 
   peer.on('call', (call) => {
@@ -350,7 +366,7 @@ function wireMainPeer() {
       attachScreenIn(member, call);
       return;
     }
-    call.answer(state.localStream);
+    call.answer(state.sendStream);
     attachCall(member, call);
   });
 
@@ -372,7 +388,7 @@ function connectTo(id, name, seq) {
     metadata: { name: state.name, seq: state.seq, avatar: state.avatar },
     reliable: true,
   }));
-  attachCall(member, state.mainPeer.call(id, state.localStream));
+  attachCall(member, state.mainPeer.call(id, state.sendStream));
 }
 
 function upsertMember(id, { name, seq, avatar, muted, deaf }) {
@@ -397,6 +413,7 @@ function upsertMember(id, { name, seq, avatar, muted, deaf }) {
   if (muted !== undefined) m.muted = !!muted;
   if (deaf !== undefined) m.deaf = !!deaf;
   if (state.hostId === state.myId) state.roster.set(id, { name: m.name, seq: m.seq });
+  applyMemberAudio(m);
   renderSeat(m);
   sortSeats();
   updateCount();
@@ -489,6 +506,8 @@ function removeMember(id, reason) {
   updateCount();
   if (state.leaving) return;
   if (reason !== 'bye') statOf(m.name).drops++;
+  if (personMenuFor === m) closePersonMenu();
+  playBlip(false);
   addSystem(narrate(reason === 'bye' ? 'left' : 'dropped', { n: m.name }));
   if (id === state.hostId) handleHostLeft();
 }
@@ -1256,7 +1275,7 @@ function toggleDeaf() {
   } else {
     setMuted(state.mutedBeforeDeaf);
   }
-  for (const m of state.members.values()) m.audio.muted = state.deaf;
+  for (const m of state.members.values()) applyMemberAudio(m);
   const s = state.screens.get(state.watching);
   if (s) s.video.muted = !s.audible || state.deaf;
   broadcast(myProfile());
@@ -1264,25 +1283,160 @@ function toggleDeaf() {
   renderSelf();
 }
 
+// Troca só a entrada do portão: a trilha enviada é a mesma, sem renegociar.
 async function switchMic(deviceId) {
   const stream = await openMic(deviceId);
-  const track = stream.getAudioTracks()[0];
-  track.enabled = !state.muted;
-  for (const m of state.members.values()) {
-    const sender = m.call?.peerConnection?.getSenders().find((s) => s.track?.kind === 'audio');
-    await sender?.replaceTrack(track).catch((err) => console.warn('replaceTrack', err));
-  }
+  stream.getAudioTracks().forEach((t) => { t.enabled = !state.muted; });
+  connectMicSource(stream);
   state.localStream?.getTracks().forEach((t) => t.stop());
   state.localStream = stream;
   addMeter(state.myId, stream);
+}
+
+// ---------- Microfone: portão de sensibilidade ----------
+
+function audioContext() {
+  if (!state.audioCtx) {
+    state.audioCtx = new AudioContext();
+    applyCtxSink();
+  }
+  return state.audioCtx;
+}
+
+async function buildMicChain() {
+  const ctx = audioContext();
+  await ctx.resume();
+  await ctx.audioWorklet.addModule('gate-worklet.js');
+  const gate = new AudioWorkletNode(ctx, 'mic-gate');
+  gate.port.onmessage = (e) => { state.gateOpen = !!e.data?.open; };
+  const dest = ctx.createMediaStreamDestination();
+  gate.connect(dest);
+  state.mic = { src: null, gate, dest };
+  state.sendStream = dest.stream;
+  connectMicSource(state.localStream);
+  applyGate();
+}
+
+function connectMicSource(stream) {
+  if (!state.mic) return;
+  state.mic.src?.disconnect();
+  state.mic.src = audioContext().createMediaStreamSource(stream);
+  state.mic.src.connect(state.mic.gate);
+}
+
+// null = automático (sem portão, só a supressão de ruído).
+function gateDb() {
+  const raw = loadPref('micGate');
+  const db = Number(raw);
+  return raw && Number.isFinite(db) ? Math.min(GATE_DB_MAX, Math.max(GATE_DB_MIN, db)) : null;
+}
+
+function applyGate() {
+  const db = gateDb();
+  if (db === null) state.gateOpen = true;
+  state.mic?.gate.port.postMessage({ threshold: db === null ? 0 : 10 ** (db / 20) });
+  const pct = db === null ? 0 : ((db - GATE_DB_MIN) / (GATE_DB_MAX - GATE_DB_MIN)) * 100;
+  $('mic-gate-mark').style.left = `${pct}%`;
+  $('mic-gate-mark').hidden = db === null;
+  $('mic-gate-auto').checked = db === null;
+  $('mic-gate').disabled = db === null;
+  $('mic-gate').value = String(db ?? -45);
+}
+
+function showMicLevel(level) {
+  const db = level > 0 ? 20 * Math.log10(level) : -100;
+  const pct = ((db - GATE_DB_MIN) / (GATE_DB_MAX - GATE_DB_MIN)) * 100;
+  $('mic-level').style.width = `${Math.min(100, Math.max(0, pct))}%`;
+  const gate = gateDb();
+  $('mic-meter').classList.toggle('below', gate !== null && db < gate);
+}
+
+// ---------- Ajustes por pessoa (só pra mim) ----------
+// Volume e "silenciar pra mim", lembrados pelo nome neste PC. Chave com
+// prefixo pra nome nenhum virar propriedade especial do objeto.
+
+function loadPeople() {
+  try {
+    const all = JSON.parse(loadPref('people') || '{}');
+    return all && typeof all === 'object' && !Array.isArray(all) ? all : {};
+  } catch {
+    return {};
+  }
+}
+
+function personPref(name) {
+  const p = loadPeople()[`n:${name}`];
+  const vol = Number(p?.vol);
+  return { vol: Number.isFinite(vol) ? Math.min(1, Math.max(0, vol)) : 1, mute: !!p?.mute };
+}
+
+function setPersonPref(name, patch) {
+  const all = loadPeople();
+  const next = { ...personPref(name), ...patch };
+  if (next.vol === 1 && !next.mute) delete all[`n:${name}`];
+  else all[`n:${name}`] = next;
+  savePref('people', JSON.stringify(all));
+}
+
+function applyMemberAudio(m) {
+  const p = personPref(m.name);
+  m.audio.volume = p.vol;
+  m.audio.muted = state.deaf || p.mute;
+}
+
+let personMenuFor = null;
+
+function openPersonMenu(member, seat) {
+  if (document.fullscreenElement) return;
+  personMenuFor = member;
+  const p = personPref(member.name);
+  $('pm-name').textContent = member.name;
+  $('pm-vol').value = String(Math.round(p.vol * 100));
+  $('pm-vol-val').textContent = `${Math.round(p.vol * 100)}%`;
+  $('pm-mute').textContent = p.mute ? '🔊 Voltar a ouvir' : '🔇 Silenciar pra mim';
+  const menu = $('person-menu');
+  menu.hidden = false;
+  const r = seat.getBoundingClientRect();
+  const w = menu.offsetWidth;
+  menu.style.left = `${Math.min(window.innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2))}px`;
+  menu.style.top = `${Math.max(8, r.top - menu.offsetHeight - 8)}px`;
+}
+
+function closePersonMenu() {
+  personMenuFor = null;
+  $('person-menu').hidden = true;
+}
+
+// ---------- Sons de entrar/sair ----------
+// Gerados na hora, sem arquivo de áudio. Saem pela saída de som escolhida.
+
+function playBlip(up) {
+  if (loadPref('sounds') === 'off' || state.deaf || !state.audioCtx) return;
+  const ctx = state.audioCtx;
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(up ? 520 : 780, t);
+  osc.frequency.exponentialRampToValueAtTime(up ? 880 : 440, t + 0.14);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.25);
+}
+
+function applyCtxSink() {
+  if (!state.audioCtx?.setSinkId) return;
+  state.audioCtx.setSinkId($('speaker').value || '').catch((err) => console.warn('ctx setSinkId', err));
 }
 
 // ---------- Indicador de quem está falando ----------
 
 function addMeter(id, stream) {
   removeMeter(id);
-  state.audioCtx ??= new AudioContext();
-  const src = state.audioCtx.createMediaStreamSource(stream);
+  const src = audioContext().createMediaStreamSource(stream);
   const analyser = state.audioCtx.createAnalyser();
   analyser.fftSize = 512;
   src.connect(analyser);
@@ -1354,7 +1508,8 @@ function tick() {
     meter.level = Math.sqrt(sum / meter.buf.length);
     if (meter.level > SPEAKING_THRESHOLD) meter.lastLoud = now;
     // Segura a boca aberta um pouco pra não piscar entre sílabas.
-    const speaking = now - meter.lastLoud < SPEAKING_HOLD_MS;
+    // Eu: com o portão fechado nada sai, então o boneco também não fala.
+    const speaking = now - meter.lastLoud < SPEAKING_HOLD_MS && (id !== state.myId || state.gateOpen);
     const seat = id === state.myId ? state.selfSeat : state.members.get(id)?.seat;
     if (speaking && state.mainPeer) statOf(id === state.myId ? state.name : state.members.get(id)?.name ?? '…').talk += dt;
     seat?.classList.toggle('speaking', speaking);
@@ -1363,16 +1518,20 @@ function tick() {
   }
   if ($('settings-dialog').open) {
     const mine = state.meters.get(state.myId);
-    if (mine) $('mic-level').style.width = `${Math.min(100, mine.level * 400)}%`;
+    if (mine) showMicLevel(mine.level);
   }
   state.rafId = requestAnimationFrame(tick);
 }
 
 // ---------- Dispositivos e teste de microfone (lobby) ----------
 
+function micConstraints() {
+  return Object.fromEntries(Object.keys(AUDIO_PROCESSING).map((k) => [k, loadPref(k) !== 'off']));
+}
+
 function openMic(deviceId) {
   return navigator.mediaDevices.getUserMedia({
-    audio: deviceId ? { ...AUDIO_CONSTRAINTS, deviceId: { exact: deviceId } } : AUDIO_CONSTRAINTS,
+    audio: deviceId ? { ...micConstraints(), deviceId: { exact: deviceId } } : micConstraints(),
     video: false,
   });
 }
@@ -1404,7 +1563,7 @@ async function startPreview() {
     analyser.getFloatTimeDomainData(buf);
     let sum = 0;
     for (const v of buf) sum += v * v;
-    $('mic-level').style.width = `${Math.min(100, Math.sqrt(sum / buf.length) * 400)}%`;
+    showMicLevel(Math.sqrt(sum / buf.length));
     state.preview.raf = requestAnimationFrame(loop);
   };
   loop();
@@ -1474,22 +1633,16 @@ function createSeat(member) {
   seat.className = 'seat';
   seat.innerHTML = SEAT_SKELETON;
   if (member) {
-    const vol = document.createElement('input');
-    vol.type = 'range';
-    vol.className = 'vol';
-    vol.min = '0';
-    vol.max = '1';
-    vol.step = '0.05';
-    vol.value = '1';
-    vol.title = 'Volume';
-    vol.addEventListener('input', () => { member.audio.volume = Number(vol.value); });
-    seat.append(vol);
+    seat.title = 'Volume e silenciar';
+    seat.addEventListener('click', (e) => {
+      if (!e.target.closest('.badge')) openPersonMenu(member, seat);
+    });
   }
   $('seats').append(seat);
   return seat;
 }
 
-function fillSeat(seat, { id, name, avatar, host, muted, deaf, sharing, self }) {
+function fillSeat(seat, { id, name, avatar, host, muted, deaf, sharing, self, silenced }) {
   const key = JSON.stringify(avatar);
   if (seat.dataset.avatar !== key) {
     seat.dataset.avatar = key;
@@ -1510,13 +1663,14 @@ function fillSeat(seat, { id, name, avatar, host, muted, deaf, sharing, self }) 
   if (sharing) badge('share', 'AO VIVO', () => watch(id));
   if (deaf) badge('deaf', 'SURDO');
   else if (muted) badge('muted', 'MUDO');
+  if (silenced) badge('silenced', 'SILENCIADO P/ MIM');
   seat.querySelector('.badges').replaceChildren(...badges);
 }
 
 function renderSeat(m) {
   fillSeat(m.seat, {
     id: m.id, name: m.name, avatar: m.avatar, host: m.id === state.hostId,
-    muted: m.muted, deaf: m.deaf, sharing: !!m.screenIn,
+    muted: m.muted, deaf: m.deaf, sharing: !!m.screenIn, silenced: personPref(m.name).mute,
   });
 }
 
@@ -1905,6 +2059,7 @@ $('speaker').addEventListener('change', () => {
   savePref('speakerId', $('speaker').value);
   for (const m of state.members.values()) applySink(m.audio);
   for (const s of state.screens.values()) applySink(s.video);
+  applyCtxSink();
 });
 navigator.mediaDevices.addEventListener('devicechange', () => populateDevices().catch(console.warn));
 initDevices().catch(console.warn);
@@ -1992,6 +2147,66 @@ $('update-chip').addEventListener('click', async () => {
   window.baderna.installUpdate();
 });
 
+// ---------- Atalhos globais ----------
+// Registrados no processo principal (funcionam com o app minimizado); a
+// ação chega pelo mesmo caminho do menu da bandeja.
+
+const HOTKEY_PREFS = { mute: 'hotkeyMute', deaf: 'hotkeyDeaf' };
+let capturingHotkey = null;
+
+function syncHotkeys() {
+  const keys = Object.fromEntries(Object.entries(HOTKEY_PREFS).map(([action, pref]) => [action, loadPref(pref)]));
+  renderHotkeys({});
+  window.baderna?.setHotkeys(keys).then(renderHotkeys).catch(console.warn);
+}
+
+function renderHotkeys(result) {
+  const taken = [];
+  for (const [action, pref] of Object.entries(HOTKEY_PREFS)) {
+    const accel = loadPref(pref);
+    $(`hotkey-${action}`).textContent = capturingHotkey === action ? 'Aperte o atalho…' : accel || 'nenhum';
+    if (accel && result[action] === false) taken.push(accel);
+  }
+  $('hotkey-status').textContent = capturingHotkey
+    ? 'Esc cancela · Backspace apaga o atalho.'
+    : taken.length ? `${taken.join(', ')} já é usado por outro programa. Escolha outro.` : '';
+}
+
+function accelFromEvent(e) {
+  const key = e.code.startsWith('Key') ? e.code.slice(3)
+    : e.code.startsWith('Digit') ? e.code.slice(5)
+    : /^F([1-9]|1\d|2[0-4])$/.test(e.code) ? e.code : null;
+  if (!key) return null;
+  const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift'].filter(Boolean);
+  // Tecla sozinha atrapalharia o resto do PC; só F1–F24 pode ir sem modificador.
+  if (!mods.length && !/^F\d/.test(key)) return null;
+  return [...mods, key].join('+');
+}
+
+function startHotkeyCapture(action) {
+  capturingHotkey = action;
+  renderHotkeys({});
+}
+
+window.addEventListener('keydown', (e) => {
+  if (!capturingHotkey) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const action = capturingHotkey;
+  if (e.key === 'Escape') {
+    capturingHotkey = null;
+  } else if (e.key === 'Backspace' || e.key === 'Delete') {
+    savePref(HOTKEY_PREFS[action], '');
+    capturingHotkey = null;
+  } else {
+    const accel = accelFromEvent(e);
+    if (!accel) return; // ainda só modificadores
+    savePref(HOTKEY_PREFS[action], accel);
+    capturingHotkey = null;
+  }
+  syncHotkeys();
+}, true);
+
 document.addEventListener('fullscreenchange', () => {
   const fs = document.fullscreenElement;
   document.body.classList.toggle('is-fullscreen', !!fs);
@@ -2013,3 +2228,60 @@ $('screen-seats-toggle').addEventListener('click', () => {
   setFullscreenSeatsHidden(hide);
   savePref('fsSeats', hide ? 'hide' : 'show');
 });
+
+// ---------- Configurações de áudio, pessoa e atalhos ----------
+
+$('mic-gate-auto').addEventListener('change', () => {
+  savePref('micGate', $('mic-gate-auto').checked ? '' : '-45');
+  applyGate();
+});
+$('mic-gate').addEventListener('input', () => {
+  savePref('micGate', $('mic-gate').value);
+  applyGate();
+});
+applyGate();
+
+$('audio-processing').replaceChildren(...Object.entries(AUDIO_PROCESSING).map(([key, label]) => {
+  const row = document.createElement('label');
+  row.className = 'check';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = loadPref(key) !== 'off';
+  box.addEventListener('change', () => {
+    savePref(key, box.checked ? 'on' : 'off');
+    if (state.mainPeer) switchMic($('mic').value).catch((err) => addSystem(`Não deu pra reabrir o microfone: ${describeError(err)}`));
+    else startPreview();
+  });
+  row.append(box, document.createTextNode(label));
+  return row;
+}));
+
+$('sounds').checked = loadPref('sounds') !== 'off';
+$('sounds').addEventListener('change', () => savePref('sounds', $('sounds').checked ? 'on' : 'off'));
+
+$('pm-vol').addEventListener('input', () => {
+  if (!personMenuFor) return;
+  const vol = Number($('pm-vol').value) / 100;
+  setPersonPref(personMenuFor.name, { vol });
+  $('pm-vol-val').textContent = `${Math.round(vol * 100)}%`;
+  applyMemberAudio(personMenuFor);
+});
+$('pm-mute').addEventListener('click', () => {
+  const m = personMenuFor;
+  if (!m) return;
+  const mute = !personPref(m.name).mute;
+  setPersonPref(m.name, { mute });
+  $('pm-mute').textContent = mute ? '🔊 Voltar a ouvir' : '🔇 Silenciar pra mim';
+  applyMemberAudio(m);
+  renderSeat(m);
+});
+document.addEventListener('pointerdown', (e) => {
+  if (!personMenuFor || e.target.closest('#person-menu') || e.target.closest('.seat')) return;
+  closePersonMenu();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePersonMenu(); });
+
+for (const action of Object.keys(HOTKEY_PREFS)) {
+  $(`hotkey-${action}`).addEventListener('click', () => startHotkeyCapture(action));
+}
+syncHotkeys();

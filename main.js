@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, nativeImage, session, desktopCapturer, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, session, desktopCapturer, ipcMain, globalShortcut } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -160,6 +160,27 @@ ipcMain.handle('screen:list', async () => {
 ipcMain.handle('screen:select', (_e, id) => {
   pendingSourceId = typeof id === 'string' ? id : null;
 });
+
+// ---------- Atalhos globais (mutar / silenciar) ----------
+// Valem com o app minimizado. A ação vai pro renderer igual ao menu da bandeja.
+
+const HOTKEY_RE = /^(?:(?:Ctrl|Alt|Shift)\+){0,3}(?:[A-Z0-9]|F(?:[1-9]|1\d|2[0-4]))$/;
+
+ipcMain.handle('hotkeys:set', (_e, keys) => {
+  globalShortcut.unregisterAll();
+  const result = {};
+  for (const action of ['mute', 'deaf']) {
+    const accel = typeof keys?.[action] === 'string' ? keys[action] : '';
+    if (!accel) continue;
+    try {
+      result[action] = HOTKEY_RE.test(accel) && globalShortcut.register(accel, () => trayAction(action));
+    } catch {
+      result[action] = false;
+    }
+  }
+  return result;
+});
+app.on('will-quit', () => globalShortcut.unregisterAll());
 
 // ---------- Atualização automática ----------
 // Instalado, procura versão nova nos Releases do GitHub (configurado em

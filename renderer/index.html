@@ -112,6 +112,15 @@
     </div>
   </section>
 
+  <!-- ---------- Menu de uma pessoa (clique no boneco) ---------- -->
+  <div id="person-menu" class="person-menu" hidden>
+    <b id="pm-name"></b>
+    <label>Volume pra mim <span id="pm-vol-val"></span>
+      <input id="pm-vol" type="range" min="0" max="100" step="5">
+    </label>
+    <button id="pm-mute" class="ghost" type="button"></button>
+  </div>
+
   <!-- ---------- Configurações ---------- -->
   <dialog id="settings-dialog">
     <h2>Configurações</h2>
@@ -119,11 +128,25 @@
       <h3>Áudio</h3>
       <label>Microfone
         <select id="mic"></select>
-        <div class="meter" title="Fale pra testar"><div id="mic-level"></div></div>
       </label>
+      <div class="sensitivity">
+        <div id="mic-meter" class="meter big" title="Fale pra testar"><div id="mic-level"></div><div id="mic-gate-mark" class="gate-mark" hidden></div></div>
+        <label class="check"><input type="checkbox" id="mic-gate-auto"> Sensibilidade automática</label>
+        <input id="mic-gate" type="range" min="-70" max="-10" step="1" aria-label="Sensibilidade do microfone">
+        <p class="status">Som abaixo da linha não é enviado. Ajuste pra barra passar da linha só quando você fala.</p>
+      </div>
       <label>Saída de som
         <select id="speaker"></select>
       </label>
+      <div id="audio-processing" class="checks"></div>
+      <label class="check"><input type="checkbox" id="sounds"> Som quando alguém entra ou sai</label>
+    </section>
+    <section class="settings-section">
+      <h3>Atalhos globais</h3>
+      <p class="status">Funcionam até com o Baderna minimizado. Clique e aperte as teclas (ex.: Ctrl+Shift+F9).</p>
+      <div class="hotkey-row"><span>Mutar microfone</span><button id="hotkey-mute" class="ghost" type="button"></button></div>
+      <div class="hotkey-row"><span>Silenciar tudo</span><button id="hotkey-deaf" class="ghost" type="button"></button></div>
+      <p id="hotkey-status" class="status"></p>
     </section>
     <section class="settings-section">
       <h3>Janela</h3>
