@@ -1152,6 +1152,52 @@ function removeMeter(id) {
   state.meters.delete(id);
 }
 
+// Cabeça falando: o volume (em dB) decide o tamanho do balanço, e cada pico
+// de volume (sílaba) joga a cabeça pro outro lado. Quanto mais alto, maior e
+// mais rápido. A pose persegue o alvo rápido, pra ter cara de recorte.
+const SWAY_DB_FLOOR = -45;  // abaixo disso: quase parado
+const SWAY_DB_CEIL = -12;   // grito: balanço máximo
+const SWAY_MAX = { x: 12, y: 8, r: 18 };
+const SWAY_EASE = 0.45;
+const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function swayHead(seat, meter, speaking, now) {
+  const head = seat.querySelector('.av-head');
+  if (!head) return;
+  meter.pose ??= { x: 0, y: 0, r: 0 };
+  meter.target ??= { x: 0, y: 0, r: 0 };
+  meter.side ??= 1;
+
+  const db = meter.level > 0 ? 20 * Math.log10(meter.level) : -100;
+  const amp = Math.min(1, Math.max(0, (db - SWAY_DB_FLOOR) / (SWAY_DB_CEIL - SWAY_DB_FLOOR)));
+  const loud = meter.level > SPEAKING_THRESHOLD;
+  const onset = loud && !meter.wasLoud;
+  meter.wasLoud = loud;
+
+  if (!speaking) {
+    meter.target = { x: 0, y: 0, r: 0 };
+  } else if (onset || (loud && now - (meter.lastPose ?? 0) > 170 - 90 * amp)) {
+    meter.side = -meter.side;
+    const jitter = 0.7 + Math.random() * 0.6;
+    meter.target = REDUCED_MOTION
+      ? { x: 0, y: -3, r: 0 }
+      : {
+          x: meter.side * (3 + SWAY_MAX.x * amp) * jitter,
+          y: -(2 + (SWAY_MAX.y - 2) * amp),
+          r: meter.side * (5 + (SWAY_MAX.r - 5) * amp) * jitter,
+        };
+    meter.lastPose = now;
+  }
+
+  const p = meter.pose;
+  const t = meter.target;
+  p.x += (t.x - p.x) * SWAY_EASE;
+  p.y += (t.y - p.y) * SWAY_EASE;
+  p.r += (t.r - p.r) * SWAY_EASE;
+  const still = Math.abs(p.x) + Math.abs(p.y) + Math.abs(p.r) < 0.05;
+  head.style.transform = still ? '' : `translate(${p.x.toFixed(2)}px, ${p.y.toFixed(2)}px) rotate(${p.r.toFixed(2)}deg)`;
+}
+
 function tick() {
   const now = performance.now();
   for (const [id, meter] of state.meters) {
@@ -1165,6 +1211,7 @@ function tick() {
     const seat = id === state.myId ? state.selfSeat : state.members.get(id)?.seat;
     seat?.classList.toggle('speaking', speaking);
     seat?.classList.toggle('loud', now - meter.lastLoud < MOUTH_HOLD_MS);
+    if (seat) swayHead(seat, meter, speaking, now);
   }
   if ($('settings-dialog').open) {
     const mine = state.meters.get(state.myId);
@@ -1278,8 +1325,6 @@ function createSeat(member) {
   const seat = document.createElement('div');
   seat.className = 'seat';
   seat.innerHTML = SEAT_SKELETON;
-  // Cada um balança num tempo diferente, pra não ficar todo mundo em coro.
-  seat.style.setProperty('--bob-delay', `${-(Math.random() * 0.3).toFixed(2)}s`);
   if (member) {
     const vol = document.createElement('input');
     vol.type = 'range';
