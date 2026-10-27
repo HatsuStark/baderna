@@ -1,5 +1,10 @@
 const { app, BrowserWindow, session, desktopCapturer, ipcMain } = require('electron');
+const { spawn } = require('child_process');
+const fs = require('fs');
 const path = require('path');
+
+const PROC_AUDIO = path.join(__dirname, 'native', 'bin', 'proc-audio.exe');
+const PCM_FRAME_BYTES = 4; // 16-bit estéreo
 
 // --profile=NOME usa uma pasta de dados separada; permite abrir várias instâncias pra testar.
 const profileArg = process.argv.find((a) => a.startsWith('--profile='));
@@ -45,6 +50,56 @@ ipcMain.handle('screen:list', async () => {
 ipcMain.handle('screen:select', (_e, id) => {
   pendingSourceId = typeof id === 'string' ? id : null;
 });
+
+// ---------- Áudio da tela via proc-audio.exe ----------
+// Janela: captura só o processo dono (e filhos). Tela inteira: tudo menos a
+// Baderna, pra não mandar de volta a voz dos amigos.
+
+let audioProc = null;
+
+function stopScreenAudio() {
+  const proc = audioProc;
+  audioProc = null;
+  if (!proc) return;
+  proc.stdin.end();
+  proc.kill();
+}
+
+ipcMain.handle('screen-audio:start', (event, sourceId) => {
+  stopScreenAudio();
+  if (process.platform !== 'win32') return { ok: false, error: 'Áudio da tela só funciona no Windows por enquanto.' };
+  if (!fs.existsSync(PROC_AUDIO)) return { ok: false, error: 'proc-audio.exe não encontrado (rode npm run build:native).' };
+
+  const win = /^window:(\d+):/.exec(String(sourceId));
+  const args = win ? ['window', win[1]] : ['exclude', String(process.pid)];
+  const proc = spawn(PROC_AUDIO, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+  audioProc = proc;
+
+  const wc = event.sender;
+  let pending = Buffer.alloc(0);
+  proc.stdout.on('data', (chunk) => {
+    // Pipe entrega pedaços de qualquer tamanho; só repassa frames inteiros.
+    const data = pending.length ? Buffer.concat([pending, chunk]) : chunk;
+    const usable = data.length - (data.length % PCM_FRAME_BYTES);
+    pending = data.subarray(usable);
+    if (usable && !wc.isDestroyed()) wc.send('screen-audio:data', data.subarray(0, usable));
+  });
+
+  let stderr = '';
+  proc.stderr.on('data', (d) => { stderr += d; });
+  const report = (msg) => {
+    if (!wc.isDestroyed()) wc.send('screen-audio:error', msg);
+  };
+  proc.on('error', (err) => report(err.message));
+  proc.on('exit', (code) => {
+    if (audioProc === proc) audioProc = null;
+    if (code) report(stderr.trim().split('\n').pop() || `código ${code}`);
+  });
+  return { ok: true };
+});
+
+ipcMain.handle('screen-audio:stop', stopScreenAudio);
+app.on('before-quit', stopScreenAudio);
 
 app.whenReady().then(() => {
   // Libera só mic/câmera, saída de som e captura de tela (a fonte é decidida

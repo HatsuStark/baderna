@@ -7,7 +7,8 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "start:2": "electron . --profile=2"
+    "start:2": "electron . --profile=2",
+    "build:native": "native\\build.cmd"
   },
   "dependencies": {
     "peerjs": "^1.5.4"

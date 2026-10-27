@@ -22,6 +22,7 @@ const SHARE_PRESETS = {
   '1080p30': { width: 1920, height: 1080, frameRate: 30, maxBitrate: 4_500_000 },
   '1080p60': { width: 1920, height: 1080, frameRate: 60, maxBitrate: 8_000_000 },
 };
+const SCREEN_AUDIO_BITRATE = 128_000;
 
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -46,7 +47,7 @@ const state = {
   rafId: 0,
   preview: null,      // teste de microfone no lobby: { stream, ctx, raf }
   previewToken: 0,
-  screen: null,       // minha tela compartilhada: { stream, preset, mode }
+  screen: null,       // minha tela compartilhada: { stream, preset, mode, audio }
 };
 
 // ---------- PeerJS helpers ----------
@@ -258,7 +259,7 @@ function wireMainPeer() {
   peer.on('call', (call) => {
     const member = upsertMember(call.peer, {});
     if (call.metadata?.kind === 'screen') {
-      call.answer(); // só recebe
+      call.answer(undefined, { sdpTransform: opusStereo }); // só recebe
       attachScreenIn(member, call);
       return;
     }
@@ -386,6 +387,7 @@ async function openSharePicker() {
   const dialog = $('share-dialog');
   $('share-quality').value = loadPref('shareQuality') || '1080p30';
   $('share-mode').value = loadPref('shareMode') || 'motion';
+  $('share-audio').checked = loadPref('shareAudio') !== 'off';
   $('sources').textContent = 'Carregando…';
   dialog.showModal();
 
@@ -427,12 +429,25 @@ async function openSharePicker() {
 async function shareSource(sourceId) {
   const presetKey = $('share-quality').value;
   const mode = $('share-mode').value;
+  const withAudio = $('share-audio').checked;
   savePref('shareQuality', presetKey);
   savePref('shareMode', mode);
+  savePref('shareAudio', withAudio ? 'on' : 'off');
+  stopShare();
   try {
     await window.baderna.selectScreen(sourceId);
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-    await beginShare(stream, presetKey, mode);
+    let audio = null;
+    if (withAudio) {
+      try {
+        audio = await startScreenAudio(sourceId);
+        stream.addTrack(audio.track);
+      } catch (err) {
+        console.error(err);
+        setRoomStatus(`Tela indo sem áudio: ${err.message}`);
+      }
+    }
+    await beginShare(stream, presetKey, mode, audio);
   } catch (err) {
     console.error(err);
     setRoomStatus(err?.name === 'NotAllowedError'
@@ -441,8 +456,53 @@ async function shareSource(sourceId) {
   }
 }
 
+// Liga o proc-audio.exe e transforma o PCM dele numa MediaStreamTrack.
+async function startScreenAudio(sourceId) {
+  const res = await window.baderna.startScreenAudio(sourceId);
+  if (!res.ok) throw new Error(res.error);
+
+  const ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+  const offs = [];
+  try {
+    await ctx.audioWorklet.addModule('pcm-worklet.js');
+  } catch (err) {
+    window.baderna.stopScreenAudio();
+    ctx.close();
+    throw err;
+  }
+  const player = new AudioWorkletNode(ctx, 'pcm-player', { numberOfInputs: 0, outputChannelCount: [2] });
+  const dest = ctx.createMediaStreamDestination();
+  player.connect(dest);
+
+  offs.push(window.baderna.onScreenAudioData((bytes) => {
+    const pcm = new Int16Array(bytes.slice().buffer);
+    player.port.postMessage(pcm, [pcm.buffer]);
+  }));
+  offs.push(window.baderna.onScreenAudioError((msg) => setRoomStatus(`Áudio da tela parou: ${msg}`)));
+
+  const track = dest.stream.getAudioTracks()[0];
+  track.contentHint = 'music';
+  return {
+    track,
+    stop() {
+      offs.forEach((off) => off());
+      window.baderna.stopScreenAudio();
+      track.stop();
+      ctx.close().catch(() => {});
+    },
+  };
+}
+
+// Opus em estéreo e com bitrate de música; o padrão é mono pensado pra voz.
+function opusStereo(sdp) {
+  const pt = /a=rtpmap:(\d+) opus\/48000/i.exec(sdp)?.[1];
+  if (!pt) return sdp;
+  return sdp.replace(new RegExp(`a=fmtp:${pt} ([^\\r\\n]*)`), (_line, params) =>
+    `a=fmtp:${pt} ${params};stereo=1;sprop-stereo=1;maxaveragebitrate=${SCREEN_AUDIO_BITRATE}`);
+}
+
 // Separado do seletor pra dar pra testar com qualquer stream de vídeo.
-async function beginShare(stream, presetKey, mode) {
+async function beginShare(stream, presetKey, mode, audio = null) {
   stopShare();
   const preset = SHARE_PRESETS[presetKey] ?? SHARE_PRESETS['1080p30'];
   const track = stream.getVideoTracks()[0];
@@ -459,17 +519,18 @@ async function beginShare(stream, presetKey, mode) {
   // Usuário pode parar pelo próprio sistema (ou a janela fechar).
   track.addEventListener('ended', stopShare);
 
-  state.screen = { stream, preset, mode };
+  state.screen = { stream, preset, mode, audio };
   for (const m of state.members.values()) sendScreenTo(m);
-  showScreen(state.myId, `${state.name} (você)`, stream);
+  showScreen(state.myId, `${state.name} (você)`, stream, false);
   updateShareButton();
   renderSelf();
 }
 
 function stopShare() {
   if (!state.screen) return;
-  const { stream } = state.screen;
+  const { stream, audio } = state.screen;
   state.screen = null;
+  audio?.stop();
   stream.getTracks().forEach((t) => t.stop());
   for (const m of state.members.values()) {
     m.screenOut?.close();
@@ -483,7 +544,10 @@ function stopShare() {
 
 function sendScreenTo(member) {
   if (!state.screen || member.screenOut) return;
-  const call = state.mainPeer.call(member.id, state.screen.stream, { metadata: { kind: 'screen' } });
+  const call = state.mainPeer.call(member.id, state.screen.stream, {
+    metadata: { kind: 'screen' },
+    sdpTransform: opusStereo,
+  });
   if (!call) return;
   member.screenOut = call;
   tuneScreenSender(call.peerConnection, state.screen.preset, state.screen.mode);
@@ -497,6 +561,13 @@ function tuneScreenSender(pc, preset, mode) {
   if (!pc) return;
   const apply = async () => {
     for (const sender of pc.getSenders()) {
+      if (sender.track?.kind === 'audio') {
+        const params = sender.getParameters();
+        if (!params.encodings?.length) params.encodings = [{}];
+        params.encodings[0].maxBitrate = SCREEN_AUDIO_BITRATE;
+        await sender.setParameters(params).catch((err) => console.warn('setParameters audio', err));
+        continue;
+      }
       if (sender.track?.kind !== 'video') continue;
       const params = sender.getParameters();
       if (!params.encodings?.length) params.encodings = [{}];
@@ -520,7 +591,7 @@ function attachScreenIn(member, call) {
   member.screenIn?.close();
   member.screenIn = call;
   call.on('stream', (stream) => {
-    showScreen(member.id, member.name, stream);
+    showScreen(member.id, member.name, stream, true);
     renderTile(member);
   });
   call.on('close', () => {
@@ -536,7 +607,8 @@ function closeScreenIn(member) {
   if (state.members.has(member.id)) renderTile(member);
 }
 
-function showScreen(id, label, stream) {
+// audible: toca o áudio da tela. Falso na minha própria prévia (já ouço o original).
+function showScreen(id, label, stream, audible) {
   let fig = [...$('stage').children].find((el) => el.dataset.id === id);
   if (!fig) {
     fig = document.createElement('figure');
@@ -545,15 +617,28 @@ function showScreen(id, label, stream) {
     const video = document.createElement('video');
     video.autoplay = true;
     video.playsInline = true;
-    video.muted = true;
+    video.muted = !audible;
+    applySink(video);
     const caption = document.createElement('figcaption');
     const name = document.createElement('span');
+    caption.append(name);
+    if (audible) {
+      const volume = document.createElement('input');
+      volume.type = 'range';
+      volume.min = '0';
+      volume.max = '1';
+      volume.step = '0.05';
+      volume.value = '1';
+      volume.title = 'Volume da tela';
+      volume.addEventListener('input', () => { video.volume = Number(volume.value); });
+      caption.append(volume);
+    }
     const full = document.createElement('button');
     full.type = 'button';
     full.textContent = '⛶';
     full.title = 'Tela cheia (ou duplo clique)';
     full.addEventListener('click', () => toggleFullscreen(fig));
-    caption.append(name, full);
+    caption.append(full);
     fig.append(video, caption);
     fig.addEventListener('dblclick', () => toggleFullscreen(fig));
     $('stage').append(fig);
@@ -815,6 +900,7 @@ $('mic').addEventListener('change', () => {
 $('speaker').addEventListener('change', () => {
   savePref('speakerId', $('speaker').value);
   for (const m of state.members.values()) applySink(m.audio);
+  for (const v of $('stage').querySelectorAll('video')) applySink(v);
 });
 navigator.mediaDevices.addEventListener('devicechange', () => populateDevices().catch(console.warn));
 initDevices().catch(console.warn);

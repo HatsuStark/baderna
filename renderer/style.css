@@ -232,3 +232,13 @@ dialog .row label { flex: 1; }
 }
 
 .dialog-actions { display: flex; justify-content: flex-end; }
+
+label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--text);
+}
+
+.screen figcaption input[type=range] { width: 90px; }
