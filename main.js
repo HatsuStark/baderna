@@ -3,7 +3,10 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const PROC_AUDIO = path.join(__dirname, 'native', 'bin', 'proc-audio.exe');
+// Instalado, o .exe fica fora do asar (não dá pra executar de dentro dele).
+const PROC_AUDIO = app.isPackaged
+  ? path.join(process.resourcesPath, 'proc-audio.exe')
+  : path.join(__dirname, 'native', 'bin', 'proc-audio.exe');
 const PCM_FRAME_BYTES = 4; // 16-bit estéreo
 
 // --profile=NOME usa uma pasta de dados separada; permite abrir várias instâncias pra testar.
@@ -24,6 +27,7 @@ function createWindow() {
     minHeight: 480,
     backgroundColor: '#1e1f22',
     autoHideMenuBar: true,
+    icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

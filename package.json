@@ -8,12 +8,46 @@
   "scripts": {
     "start": "electron .",
     "start:2": "electron . --profile=2",
-    "build:native": "native\\build.cmd"
+    "build:native": "native\\build.cmd",
+    "dist": "npm run build:native && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.baderna.app",
+    "productName": "Baderna",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "build/icon.png",
+      "node_modules/peerjs/dist/peerjs.min.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "native/bin/proc-audio.exe",
+        "to": "proc-audio.exe"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "Baderna"
+    }
   },
   "dependencies": {
     "peerjs": "^1.5.4"
   },
   "devDependencies": {
-    "electron": "^45.0.0"
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
   }
 }

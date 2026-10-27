@@ -21,6 +21,7 @@ const SHARE_PRESETS = {
   '720p30': { width: 1280, height: 720, frameRate: 30, maxBitrate: 2_500_000 },
   '1080p30': { width: 1920, height: 1080, frameRate: 30, maxBitrate: 4_500_000 },
   '1080p60': { width: 1920, height: 1080, frameRate: 60, maxBitrate: 8_000_000 },
+  '1440p60': { width: 2560, height: 1440, frameRate: 60, maxBitrate: 12_000_000 },
 };
 const SCREEN_AUDIO_BITRATE = 128_000;
 
