@@ -1803,7 +1803,7 @@ document.addEventListener('fullscreenchange', () => {
   // Em tela cheia só o elemento da tela aparece: a fileira de bonecos vai
   // junto pra dentro dele (o mesmo nó, então aura e balanço seguem iguais).
   const stage = document.querySelector('.stage');
-  if (fs === $('screen-view')) $('screen-seats').append($('seats'));
+  if (fs === $('screen-view')) $('screen-seats-row').append($('seats'));
   else if ($('seats').parentElement !== stage) stage.insertBefore($('seats'), stage.querySelector('.dock'));
 });
 

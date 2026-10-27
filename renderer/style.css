@@ -245,11 +245,19 @@ button.chip:disabled { opacity: 1; }
 /* Tela cheia: a galera aparece em miniatura embaixo do vídeo (dá pra esconder). */
 .screen-seats { display: none; }
 .screen-view:fullscreen .screen-seats {
-  display: flex; justify-content: center; position: absolute; left: 0; right: 0; bottom: 0;
-  padding: 4vh 0 1vh; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: .8vh;
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 2vh 0 1vh; pointer-events: none;
   background: linear-gradient(to top, rgba(0, 0, 0, .8), rgba(0, 0, 0, .45) 60%, transparent);
 }
-.screen-view.hide-seats .screen-seats { display: none !important; }
+.screen-seats-row { display: flex; justify-content: center; }
+/* Escondida: some a fileira e o degradê, o 👥 fica sozinho no rodapé pra trazer de volta. */
+.screen-view.hide-seats .screen-seats { background: none; }
+.screen-view.hide-seats .screen-seats-row { display: none; }
+#screen-seats-toggle {
+  pointer-events: auto; font-size: 1.8vh; padding: .4vh 1.4vh;
+  background: rgba(14, 14, 20, .75); border: 1px solid var(--line); border-radius: 999px;
+}
 /* Tamanho pela altura da tela: fica proporcional em 1080p, 1440p ou 4K. */
 .screen-seats .seats { position: static; padding: 0; gap: 1.2vh; overflow: visible; }
 .screen-seats .seat { width: 12vh; padding-top: 1.8vh; }
@@ -259,8 +267,7 @@ button.chip:disabled { opacity: 1; }
 .screen-seats .seat .tag { font-size: 1.5vh; padding: 0 .9vh; }
 .screen-seats .badge { font-size: 1vh; }
 .screen-seats .seat .vol { display: none; }
-.screen-view:not(:fullscreen) #screen-seats-toggle { display: none; }
-#screen-seats-toggle.off { opacity: .45; }
+#screen-seats-toggle.off { opacity: .55; }
 
 /* ---------- Cadeiras ---------- */
 
