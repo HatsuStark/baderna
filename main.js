@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, Tray, nativeImage, session, desktopCapturer, i
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { autoUpdater } = require('electron-updater');
 
 // Instalado, o .exe fica fora do asar (não dá pra executar de dentro dele).
 const PROC_AUDIO = app.isPackaged
@@ -111,6 +112,7 @@ function updateTray() {
     { label: s.deaf ? 'Voltar a ouvir' : 'Silenciar tudo', enabled: s.inRoom, click: () => trayAction('deaf') },
     { label: 'Sair da sala', enabled: s.inRoom, click: () => trayAction('leave') },
     { type: 'separator' },
+    ...(updateReady ? [{ label: `Atualizar pra ${updateReady} e reiniciar`, click: installUpdate }] : []),
     { label: 'Fechar o Baderna', click: () => { quitting = true; app.quit(); } },
   ]));
 }
@@ -158,6 +160,39 @@ ipcMain.handle('screen:list', async () => {
 ipcMain.handle('screen:select', (_e, id) => {
   pendingSourceId = typeof id === 'string' ? id : null;
 });
+
+// ---------- Atualização automática ----------
+// Instalado, procura versão nova nos Releases do GitHub (configurado em
+// package.json > build.publish), baixa em segundo plano e instala ao fechar
+// o app de verdade, ou na hora pelo aviso da barra de título / bandeja.
+
+const UPDATE_CHECK_MS = 4 * 60 * 60 * 1000;
+let updateReady = null; // versão baixada esperando instalar
+
+function setupUpdates() {
+  if (!app.isPackaged) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('update-downloaded', (info) => {
+    updateReady = String(info?.version ?? '');
+    mainWindow?.webContents.send('update:ready', updateReady);
+    updateTray();
+  });
+  autoUpdater.on('error', (err) => console.warn('update', err?.message ?? err));
+  const check = () => autoUpdater.checkForUpdates().catch((err) => console.warn('update', err?.message ?? err));
+  check();
+  setInterval(check, UPDATE_CHECK_MS);
+}
+
+function installUpdate() {
+  if (!updateReady) return;
+  quitting = true;
+  // isSilent: sem telas do instalador; isForceRunAfter: abre de novo depois.
+  autoUpdater.quitAndInstall(true, true);
+}
+
+ipcMain.on('update:install', installUpdate);
+ipcMain.handle('update:status', () => updateReady);
 
 // ---------- Capas de filme (TMDB) ----------
 // Chave pela variável TMDB_KEY ou no arquivo tmdb-key.txt (fora do git, vai
@@ -274,6 +309,7 @@ app.whenReady().then(() => {
 
   createWindow();
   createTray();
+  setupUpdates();
 });
 
 app.on('window-all-closed', () => app.quit());

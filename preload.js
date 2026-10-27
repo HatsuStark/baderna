@@ -19,4 +19,7 @@ contextBridge.exposeInMainWorld('baderna', {
   onScreenAudioData: (cb) => subscribe('screen-audio:data', cb),
   onScreenAudioError: (cb) => subscribe('screen-audio:error', cb),
   searchMovies: (query) => ipcRenderer.invoke('movies:search', query),
+  onUpdateReady: (cb) => subscribe('update:ready', cb),
+  updateStatus: () => ipcRenderer.invoke('update:status'),
+  installUpdate: () => ipcRenderer.send('update:install'),
 });

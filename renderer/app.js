@@ -1974,6 +1974,24 @@ $('close-to-tray').addEventListener('change', () => {
   window.baderna?.setTraySettings({ closeToTray: $('close-to-tray').checked });
 });
 
+// Atualização baixada em segundo plano: botão na barra de título instala e
+// reabre o app (sai da sala antes, avisando a galera).
+function showUpdateReady(version) {
+  if (!version) return;
+  $('update-chip').hidden = false;
+  $('update-chip').textContent = `⬆ Atualizar pra ${version}`;
+  $('update-chip').title = 'Reinicia o Baderna com a versão nova (sai da sala, se estiver em uma)';
+}
+window.baderna?.onUpdateReady(showUpdateReady);
+window.baderna?.updateStatus().then(showUpdateReady).catch(() => {});
+$('update-chip').addEventListener('click', async () => {
+  if (state.mainPeer) {
+    broadcast({ type: 'bye' });
+    await sleep(200);
+  }
+  window.baderna.installUpdate();
+});
+
 document.addEventListener('fullscreenchange', () => {
   const fs = document.fullscreenElement;
   document.body.classList.toggle('is-fullscreen', !!fs);

@@ -43,10 +43,12 @@
       "oneClick": true,
       "perMachine": false,
       "createDesktopShortcut": true,
-      "shortcutName": "Baderna"
+      "shortcutName": "Baderna",
+      "artifactName": "Baderna-Setup-${version}.${ext}"
     }
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "peerjs": "^1.5.4"
   },
   "devDependencies": {

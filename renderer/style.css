@@ -50,6 +50,11 @@ body { padding-top: var(--titlebar-h); }
 .titlebar-room:not(:empty)::before { content: '· '; color: var(--cyan); }
 /* Em tela cheia a faixa some: área de arrastar engoliria cliques no topo do vídeo. */
 body.is-fullscreen .titlebar { display: none; }
+/* Versão nova baixada: botão no meio da barra (fora da área de arrastar). */
+.titlebar-update {
+  margin-left: 16px; padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  -webkit-app-region: no-drag; background: rgba(182, 255, 59, .14); border: 1px solid var(--lime); color: var(--lime);
+}
 
 /* ---------- Fundo ---------- */
 
