@@ -1279,7 +1279,7 @@ function createSeat(member) {
   seat.className = 'seat';
   seat.innerHTML = SEAT_SKELETON;
   // Cada um balança num tempo diferente, pra não ficar todo mundo em coro.
-  seat.style.setProperty('--bob-delay', `${-(Math.random() * 0.38).toFixed(2)}s`);
+  seat.style.setProperty('--bob-delay', `${-(Math.random() * 0.3).toFixed(2)}s`);
   if (member) {
     const vol = document.createElement('input');
     vol.type = 'range';

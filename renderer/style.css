@@ -241,12 +241,15 @@ button.chip:disabled { opacity: 1; }
 /* Falando: a cabeça se solta do corpo e balança em volta do queixo. */
 .av-head { transform-box: fill-box; transform-origin: 50% 100%; transition: transform .2s ease-out; }
 .seat.speaking .av-head, .seat.preview:hover .av-head {
-  animation: head-bob .38s ease-in-out infinite alternate;
+  /* steps(1): pula de pose em pose, igual animação de recorte (~13 qps). */
+  animation: head-bob .3s steps(1) infinite;
   animation-delay: var(--bob-delay, 0s);
 }
 @keyframes head-bob {
-  from { transform: translateY(-11px) rotate(-7deg); }
-  to { transform: translateY(-17px) rotate(7deg); }
+  0% { transform: translateY(-14px) rotate(-12deg); }
+  25% { transform: translateY(-24px) rotate(5deg) scale(1.05, .95); }
+  50% { transform: translateY(-12px) rotate(12deg); }
+  75% { transform: translateY(-22px) rotate(-4deg) scale(.95, 1.06); }
 }
 @media (prefers-reduced-motion: reduce) {
   .seat.speaking .av-head, .seat.preview:hover .av-head { animation: none; transform: translateY(-8px); }
