@@ -577,3 +577,26 @@ label.check input { width: auto; }
 .center.has-live .screen-view:not(:fullscreen) { left: 264px; }
 .live-list::-webkit-scrollbar { width: 6px; }
 .live-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .12); border-radius: 3px; }
+
+/* Quem está assistindo, botão lado a lado e aviso de transmissão nova */
+.live-card .viewers { padding: 0 8px 6px; font-size: 11px; color: var(--cyan); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-card .viewers:empty { display: none; }
+.side-btn {
+  position: absolute; right: 6px; bottom: 6px; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;
+  background: rgba(0, 0, 0, .75); border: 1px solid rgba(25, 240, 255, .5); color: var(--cyan); display: none;
+}
+.live-card.can-side:hover .side-btn { display: block; }
+@keyframes live-fresh { 0%, 100% { box-shadow: 0 0 0 rgba(255, 59, 92, 0); } 50% { box-shadow: 0 0 18px rgba(255, 59, 92, .8); border-color: var(--red); } }
+.live-card.fresh { animation: live-fresh 1.2s ease-in-out 4; }
+
+/* Player: uma transmissão ocupa tudo; duas dividem lado a lado. */
+.screen-tile { position: absolute; inset: 0; }
+.screen-box.split { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.screen-box.split .screen-tile { position: relative; inset: auto; min-width: 0; }
+.tile-name {
+  position: absolute; left: 8px; top: 8px; z-index: 1; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 700;
+  background: rgba(0, 0, 0, .6); transition: opacity .25s;
+}
+.tile-close { position: absolute; right: 8px; top: 8px; z-index: 1; padding: 4px 9px; transition: opacity .25s; }
+.screen-view:fullscreen:not(.controls) .tile-name, .screen-view:fullscreen:not(.controls) .tile-close { opacity: 0; pointer-events: none; }
+.screen-view:fullscreen .tile-name, .screen-view:fullscreen .tile-close { top: 70px; }

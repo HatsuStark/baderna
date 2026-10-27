@@ -7,7 +7,8 @@
 // Se o host sai, o membro mais antigo (menor seq) assume o beacon.
 //
 // Mensagens no DataChannel: profile (nome/boneco/mudo), chat, theme (só do
-// host), host, screen-stop, bye, movies (lista de filmes, em movies.js). Tudo que vem de fora é validado antes de
+// host), host, screen-stop, bye, movies (lista de filmes, em movies.js),
+// watching (quais transmissões cada um tem abertas). Tudo que vem de fora é validado antes de
 // chegar no DOM; texto sempre via textContent.
 
 const ROOM_PREFIX = 'baderna-v1-';
@@ -123,6 +124,7 @@ const state = {
   codecOrderPromise: null,
   iceServers: null,   // STUN/TURN usados nas conexões (vêm do main)
   screenMuted: false, // mutei a tela que estou assistindo (só pra mim)
+  watchingAlso: null, // segunda transmissão aberta, lado a lado
   stats: new Map(),   // prêmios da resenha: nome -> contadores
   statsTimer: 0,
   sessionStart: 0,
@@ -434,6 +436,7 @@ function attachConn(member, conn) {
     watchIce(member, conn.peerConnection);
     conn.send(myProfile());
     sendMoviesTo(member);
+    conn.send({ type: 'watching', ids: watchedIds() });
     // Quem chega depois também recebe a tela que já está rolando.
     if (state.screen) sendScreenTo(member);
   });
@@ -489,6 +492,10 @@ function handleMessage(member, msg) {
     case 'movies':
       handleMoviesMessage(msg);
       break;
+    case 'watching':
+      member.watchingIds = Array.isArray(msg.ids) ? msg.ids.filter((x) => typeof x === 'string').slice(0, 2) : [];
+      updateLiveRail();
+      break;
     case 'bye':
       removeMember(member.id, 'bye');
       break;
@@ -513,6 +520,7 @@ function removeMember(id, reason) {
   if (state.leaving) return;
   if (reason !== 'bye') statOf(m.name).drops++;
   if (personMenuFor === m) closePersonMenu();
+  updateLiveRail();
   playBlip(false);
   addSystem(narrate(reason === 'bye' ? 'left' : 'dropped', { n: m.name }));
   if (id === state.hostId) handleHostLeft();
@@ -1267,19 +1275,23 @@ function registerScreen(id, label, stream, audible) {
   s.video.srcObject = stream;
   const card = createScreenCard(id, label, stream);
   if (s.card) s.card.replaceWith(card);
-  else $('live-list').append(card);
+  else {
+    $('live-list').append(card);
+    if (id !== state.myId) announceLive(card);
+  }
   s.card = card;
   updateLiveRail();
-  if (state.watching === id) watch(id);
+  if (watchedIds().includes(id)) renderWatch();
 }
 
 function unregisterScreen(id) {
   const s = state.screens.get(id);
   if (!s) return;
-  if (state.watching === id) closeWatch();
+  const wasWatched = [state.watching, state.watchingAlso].includes(id);
   state.screens.delete(id);
   s.video.srcObject = null;
   s.card?.remove();
+  if (wasWatched) unwatch(id);
   updateLiveRail();
 }
 
@@ -1314,9 +1326,22 @@ function createScreenCard(id, label, stream) {
   span.textContent = label;
   text.append(b, span);
   meta.append(face, text);
-  card.append(shot, meta);
+  const viewers = document.createElement('div');
+  viewers.className = 'viewers';
+  const side = document.createElement('button');
+  side.type = 'button';
+  side.className = 'side-btn';
+  side.textContent = '⧉ lado a lado';
+  side.title = 'Abrir junto com a que você está vendo';
+  side.addEventListener('click', (e) => {
+    e.stopPropagation();
+    watchSide(id);
+  });
+  side.addEventListener('dblclick', (e) => e.stopPropagation());
+  shot.append(side);
+  card.append(shot, meta, viewers);
   card.addEventListener('dblclick', () => {
-    if (state.watching === id && !document.fullscreenElement) toggleFullscreen();
+    if (watchedIds().includes(id) && !document.fullscreenElement) toggleFullscreen();
     else watch(id);
   });
   return card;
@@ -1325,22 +1350,106 @@ function createScreenCard(id, label, stream) {
 function updateLiveRail() {
   $('live-rail').hidden = state.screens.size === 0;
   $('room-view').querySelector('.center').classList.toggle('has-live', state.screens.size > 0);
-  for (const card of $('live-list').children) card.classList.toggle('watching', card.dataset.id === state.watching);
+  const watched = watchedIds();
+  for (const card of $('live-list').children) {
+    const id = card.dataset.id;
+    card.classList.toggle('watching', watched.includes(id));
+    card.classList.toggle('can-side', !!state.watching && !watched.includes(id));
+    const names = [...state.members.values()].filter((m) => m.watchingIds?.includes(id)).map((m) => m.name);
+    card.querySelector('.viewers').textContent = names.length ? `👁 ${names.join(', ')}` : '';
+  }
+}
+
+// Alguém começou a transmitir: card pisca e toca duas notas (dá pra desligar).
+function announceLive(card) {
+  card.classList.add('fresh');
+  setTimeout(() => card.classList.remove('fresh'), 6000);
+  if (loadPref('liveAlert') === 'off' || state.deaf || !state.audioCtx) return;
+  const ctx = state.audioCtx;
+  [[660, 0], [990, 0.13]].forEach(([freq, at]) => {
+    const t = ctx.currentTime + at;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.16, t + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.22);
+  });
+}
+
+// Até duas transmissões abertas lado a lado: state.watching é a principal
+// (abre com duplo clique), state.watchingAlso a do lado (botão "lado a lado").
+function watchedIds() {
+  return [state.watching, state.watchingAlso].filter((id) => id && state.screens.has(id));
 }
 
 function watch(id) {
-  const s = state.screens.get(id);
-  if (!s) return;
-  if (state.watching && state.watching !== id) closeWatch();
+  if (!state.screens.has(id)) return;
+  if (state.watchingAlso === id) state.watchingAlso = null;
   state.watching = id;
-  $('screen-box').replaceChildren(s.video);
-  s.video.volume = Number($('screen-volume').value);
-  applyScreenAudio(s);
-  s.video.play().catch(() => {});
-  $('screen-label').textContent = s.label;
-  $('screen-volume').parentElement.hidden = !s.audible;
+  renderWatch();
+}
+
+function watchSide(id) {
+  if (!state.watching || state.watching === id) return watch(id);
+  state.watchingAlso = id;
+  renderWatch();
+}
+
+// Fecha só uma; se era a principal, a do lado assume.
+function unwatch(id) {
+  if (state.watchingAlso === id) {
+    state.watchingAlso = null;
+  } else if (state.watching === id) {
+    state.watching = state.watchingAlso;
+    state.watchingAlso = null;
+  }
+  if (state.watching && state.screens.has(state.watching)) renderWatch();
+  else closeWatch();
+}
+
+function renderWatch() {
+  const ids = watchedIds();
+  for (const [id, s] of state.screens) if (!ids.includes(id)) s.video.muted = true;
+  const tiles = ids.map((id) => {
+    const s = state.screens.get(id);
+    const tile = document.createElement('div');
+    tile.className = 'screen-tile';
+    tile.dataset.id = id;
+    tile.append(s.video);
+    if (ids.length > 1) {
+      const name = document.createElement('span');
+      name.className = 'tile-name';
+      name.textContent = s.label;
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'ghost icon tile-close';
+      close.textContent = '✕';
+      close.title = 'Fechar só esta';
+      close.addEventListener('click', () => unwatch(id));
+      tile.append(name, close);
+    }
+    s.video.volume = Number($('screen-volume').value);
+    applyScreenAudio(s);
+    s.video.play().catch(() => {});
+    return tile;
+  });
+  $('screen-box').replaceChildren(...tiles);
+  $('screen-box').classList.toggle('split', ids.length > 1);
+  $('screen-label').textContent = ids.map((id) => state.screens.get(id).label).join('  +  ');
+  $('screen-volume').parentElement.hidden = !ids.some((id) => state.screens.get(id).audible);
   $('screen-view').hidden = false;
   updateLiveRail();
+  sendWatching();
+}
+
+// Avisa a galera o que estou assistindo (o card mostra "👁 fulano").
+function sendWatching() {
+  broadcast({ type: 'watching', ids: watchedIds() });
 }
 
 function applyScreenAudio(s) {
@@ -1351,16 +1460,15 @@ function applyScreenAudio(s) {
 
 function toggleScreenMute() {
   state.screenMuted = !state.screenMuted;
-  const s = state.screens.get(state.watching);
-  if (s) applyScreenAudio(s);
+  for (const id of watchedIds()) applyScreenAudio(state.screens.get(id));
 }
 
 function setScreenVolume(v) {
   const vol = Math.min(1, Math.max(0, v));
   $('screen-volume').value = String(vol);
-  const s = state.screens.get(state.watching);
-  if (!s) return;
-  s.video.volume = vol;
+  const ids = watchedIds();
+  if (!ids.length) return;
+  for (const id of ids) state.screens.get(id).video.volume = vol;
   // Mexer no volume desmuta, igual player de vídeo.
   if (state.screenMuted && vol > 0) toggleScreenMute();
 }
@@ -1380,13 +1488,15 @@ function showScreenControls() {
 }
 
 function closeWatch() {
-  const s = state.screens.get(state.watching);
-  if (s) s.video.muted = true;
+  for (const id of watchedIds()) state.screens.get(id).video.muted = true;
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   state.watching = null;
+  state.watchingAlso = null;
   $('screen-box').replaceChildren();
+  $('screen-box').classList.remove('split');
   $('screen-view').hidden = true;
   updateLiveRail();
+  sendWatching();
 }
 
 function setScreenLabel(id, label) {
@@ -1394,7 +1504,10 @@ function setScreenLabel(id, label) {
   if (!s) return;
   s.label = label;
   if (s.card) s.card.querySelector('.meta span').textContent = label;
-  if (state.watching === id) $('screen-label').textContent = label;
+  const ids = watchedIds();
+  if (ids.includes(id)) $('screen-label').textContent = ids.map((x) => state.screens.get(x).label).join('  +  ');
+  const tileName = $('screen-box').querySelector(`.screen-tile[data-id="${CSS.escape(id)}"] .tile-name`);
+  if (tileName) tileName.textContent = label;
 }
 
 function toggleFullscreen() {
@@ -1430,8 +1543,7 @@ function toggleDeaf() {
     setMuted(state.mutedBeforeDeaf);
   }
   for (const m of state.members.values()) applyMemberAudio(m);
-  const s = state.screens.get(state.watching);
-  if (s) applyScreenAudio(s);
+  for (const id of watchedIds()) applyScreenAudio(state.screens.get(id));
   broadcast(myProfile());
   updateDock();
   renderSelf();
@@ -2431,6 +2543,8 @@ $('audio-processing').replaceChildren(...Object.entries(AUDIO_PROCESSING).map(([
 
 $('sounds').checked = loadPref('sounds') !== 'off';
 $('sounds').addEventListener('change', () => savePref('sounds', $('sounds').checked ? 'on' : 'off'));
+$('live-alert').checked = loadPref('liveAlert') !== 'off';
+$('live-alert').addEventListener('change', () => savePref('liveAlert', $('live-alert').checked ? 'on' : 'off'));
 
 $('pm-vol').addEventListener('input', () => {
   if (!personMenuFor) return;
