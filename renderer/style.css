@@ -162,7 +162,9 @@ label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); fo
 .chip b { color: var(--cyan); font-weight: 600; }
 button.chip:disabled { opacity: 1; }
 
-.center { flex: 1; min-height: 0; position: relative; display: flex; justify-content: center; }
+/* Chat e campo de mensagem descontam o dock da direita, como a fileira de
+   bonecos (.seats right: 120px): assim ficam no eixo do boneco do meio. */
+.center { flex: 1; min-height: 0; position: relative; display: flex; justify-content: center; padding-right: 120px; }
 
 .timeline {
   width: min(860px, 100%); height: 100%; overflow-y: auto; padding: 60px 12px 14px;
@@ -208,7 +210,7 @@ button.chip:disabled { opacity: 1; }
 .card.ended { border-color: var(--line); box-shadow: none; opacity: .6; }
 .card.ended .shot::after { content: 'transmissão encerrada'; color: var(--muted); font-size: 13px; }
 
-.composer { flex: none; display: flex; justify-content: center; padding: 4px 12px 8px; gap: 0; }
+.composer { flex: none; display: flex; justify-content: center; padding: 4px 132px 8px 12px; gap: 0; }
 .composer input {
   width: min(836px, 100%); height: 52px; border-radius: 14px 0 0 14px; padding: 0 18px;
   background: var(--panel); backdrop-filter: blur(8px); border-right: none;
@@ -573,7 +575,8 @@ label.check input { width: auto; }
 .live-card .meta b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .live-card .meta span { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Com transmissão: chat e player andam pra direita da coluna. */
-.center.has-live .timeline { margin-left: 264px; width: min(860px, calc(100% - 288px)); }
+/* Com a coluna AO VIVO, o chat segue centrado e só estreita pra não encostar nela. */
+.center.has-live .timeline { width: min(860px, calc(100% - 512px)); }
 .center.has-live .screen-view:not(:fullscreen) { left: 264px; }
 .live-list::-webkit-scrollbar { width: 6px; }
 .live-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .12); border-radius: 3px; }
