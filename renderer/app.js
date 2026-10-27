@@ -7,7 +7,7 @@
 // Se o host sai, o membro mais antigo (menor seq) assume o beacon.
 //
 // Mensagens no DataChannel: profile (nome/boneco/mudo), chat, theme (só do
-// host), host, screen-stop, bye. Tudo que vem de fora é validado antes de
+// host), host, screen-stop, bye, movies (lista de filmes, em movies.js). Tudo que vem de fora é validado antes de
 // chegar no DOM; texto sempre via textContent.
 
 const ROOM_PREFIX = 'baderna-v1-';
@@ -410,6 +410,7 @@ function attachConn(member, conn) {
   conn.on('open', () => {
     watchIce(member, conn.peerConnection);
     conn.send(myProfile());
+    sendMoviesTo(member);
     // Quem chega depois também recebe a tela que já está rolando.
     if (state.screen) sendScreenTo(member);
   });
@@ -461,6 +462,9 @@ function handleMessage(member, msg) {
       break;
     case 'screen-stop':
       closeScreenIn(member);
+      break;
+    case 'movies':
+      handleMoviesMessage(msg);
       break;
     case 'bye':
       removeMember(member.id, 'bye');
@@ -1708,6 +1712,7 @@ function showRoom() {
   addMeter(state.myId, state.localStream);
   $('room-code').textContent = state.room;
   updateSaveChip();
+  updateMoviesChip();
   touchSavedRoom(state.room);
   applyTheme(state.theme);
   updateDock();
@@ -1803,7 +1808,13 @@ function renderSavedRooms() {
       storeRooms(loadRooms().filter((x) => x.code !== r.code));
       renderSavedRooms();
     });
-    item.append(enter, remove);
+    const films = document.createElement('button');
+    films.type = 'button';
+    films.className = 'remove';
+    films.textContent = '🎬';
+    films.title = 'Filmes que vocês já viram nessa sala';
+    films.addEventListener('click', () => openMovies(r.code, r.name));
+    item.append(enter, films, remove);
     return item;
   }));
 }

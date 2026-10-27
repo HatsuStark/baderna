@@ -159,6 +159,47 @@ ipcMain.handle('screen:select', (_e, id) => {
   pendingSourceId = typeof id === 'string' ? id : null;
 });
 
+// ---------- Capas de filme (TMDB) ----------
+// Chave pela variável TMDB_KEY ou no arquivo tmdb-key.txt (fora do git, vai
+// junto no instalador). Aceita a chave da API (v3) ou o token de leitura (v4,
+// começa com "eyJ"). Sem chave, a lista de filmes desenha capas próprias.
+
+function tmdbKey() {
+  if (process.env.TMDB_KEY) return process.env.TMDB_KEY.trim();
+  try {
+    return fs.readFileSync(path.join(__dirname, 'tmdb-key.txt'), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
+ipcMain.handle('movies:search', async (_e, query) => {
+  const q = String(query ?? '').trim().slice(0, 100);
+  const key = tmdbKey();
+  if (!key) return { ok: false, reason: 'no-key' };
+  if (!q) return { ok: true, results: [] };
+  const url = new URL('https://api.themoviedb.org/3/search/movie');
+  url.search = new URLSearchParams({ query: q, language: 'pt-BR', include_adult: 'false' }).toString();
+  const headers = { accept: 'application/json' };
+  if (key.startsWith('eyJ')) headers.authorization = `Bearer ${key}`;
+  else url.searchParams.set('api_key', key);
+  try {
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return { ok: false, reason: res.status === 401 ? 'bad-key' : 'error' };
+    const data = await res.json();
+    return {
+      ok: true,
+      results: (Array.isArray(data.results) ? data.results : []).slice(0, 8).map((r) => ({
+        title: String(r.title ?? ''),
+        year: Number(String(r.release_date ?? '').slice(0, 4)) || null,
+        poster: typeof r.poster_path === 'string' ? r.poster_path : '',
+      })),
+    };
+  } catch {
+    return { ok: false, reason: 'error' };
+  }
+});
+
 // ---------- Áudio da tela via proc-audio.exe ----------
 // Janela: captura só o processo dono (e filhos). Tela inteira: tudo menos a
 // Baderna, pra não mandar de volta a voz dos amigos.

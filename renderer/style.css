@@ -459,3 +459,45 @@ label.check input { width: auto; }
 .sources img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; border-radius: 6px; }
 .sources span { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sources h3 { grid-column: 1 / -1; margin: 6px 0 0; }
+
+/* ---------- Filmes que a galera viu ---------- */
+
+.movies-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.movies-head h2 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.movies-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 14px;
+  max-height: 62vh; overflow-y: auto; padding: 10px 4px 4px 0; margin-top: 6px;
+}
+.movie-card {
+  display: flex; flex-direction: column; gap: 3px; padding: 0; text-align: left;
+  background: none; border: none; border-radius: 10px; min-width: 0;
+}
+.movie-card:hover .poster { box-shadow: 0 0 0 2px var(--cyan), 0 6px 18px rgba(0, 0, 0, .5); }
+.movie-card b { font-size: 13px; line-height: 1.2; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.movie-card small, .movie-card .movie-who { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.movie-card .movie-who { color: var(--cyan); opacity: .85; }
+.poster {
+  width: 100%; aspect-ratio: 2 / 3; border-radius: 8px; object-fit: cover; display: block;
+  background: #23232b; box-shadow: 0 4px 12px rgba(0, 0, 0, .45); transition: box-shadow .15s;
+}
+/* Sem capa: pôster desenhado com o título. */
+.poster.gen { display: flex; align-items: flex-end; padding: 10px; position: relative; overflow: hidden; }
+.poster.gen::before { content: '🎬'; position: absolute; top: 8px; right: 8px; font-size: 18px; opacity: .7; }
+.poster.gen span {
+  font-family: var(--marker); font-size: 17px; line-height: 1.1; color: #fff; overflow-wrap: anywhere;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, .55); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+.movie-form { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.movie-results { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.movie-results:empty { display: none; }
+.movie-result {
+  flex: none; width: 96px; padding: 0; background: none; border: none; display: flex; flex-direction: column; gap: 4px; text-align: left;
+}
+.movie-result .poster.gen span { font-size: 12px; }
+.movie-result small { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.movie-result.selected .poster { box-shadow: 0 0 0 3px var(--cyan), 0 0 16px rgba(25, 240, 255, .5); }
+.movie-result.selected small { color: var(--cyan); }
+.movie-date { max-width: 220px; }
+.who-list { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 8px; }
+.who-list label.check { margin-top: 0; }

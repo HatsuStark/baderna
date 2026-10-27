@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://*.peerjs.com wss://*.peerjs.com">
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://image.tmdb.org; connect-src https://*.peerjs.com wss://*.peerjs.com">
   <title>Baderna</title>
   <link rel="stylesheet" href="fonts/fonts.css">
   <link rel="stylesheet" href="style.css">
@@ -58,6 +58,7 @@
         <button id="room-chip" class="chip" type="button" title="Copiar código">sala <b id="room-code"></b></button>
         <span id="count-chip" class="chip"></span>
         <span id="live-chips" class="chips"></span>
+        <button id="movies-chip" class="chip" type="button" title="Filmes que a galera já viu">🎬 filmes <b id="movies-count"></b></button>
         <button id="theme-chip" class="chip" type="button">tema <b id="theme-name"></b></button>
       </div>
     </header>
@@ -157,6 +158,42 @@
     </div>
   </dialog>
 
+  <!-- ---------- Filmes que a galera viu ---------- -->
+  <dialog id="movies-dialog" class="wide-dialog">
+    <div class="movies-head">
+      <h2 id="movies-title">Filmes</h2>
+      <button id="movie-add" class="primary" type="button">+ Filme</button>
+    </div>
+    <section id="movies-list">
+      <p id="movies-sub" class="status"></p>
+      <div id="movies-grid" class="movies-grid"></div>
+      <div class="dialog-actions">
+        <button id="movies-close" class="primary" type="button">Fechar</button>
+      </div>
+    </section>
+    <form id="movie-form" class="movie-form" autocomplete="off" hidden>
+      <label>Filme
+        <input id="movie-search" maxlength="100" placeholder="Digite o nome do filme…">
+      </label>
+      <p id="movie-search-status" class="status"></p>
+      <div id="movie-results" class="movie-results"></div>
+      <label class="movie-date">Visto em
+        <input id="movie-date" type="date">
+      </label>
+      <div class="field">
+        <h4>Quem assistiu</h4>
+        <div id="movie-who" class="who-list"></div>
+        <input id="movie-who-extra" maxlength="120" placeholder="Mais alguém? Separe por vírgula">
+      </div>
+      <div class="dialog-actions">
+        <button id="movie-delete" class="ghost" type="button">Remover</button>
+        <span class="spacer"></span>
+        <button id="movie-cancel" class="ghost" type="button">Cancelar</button>
+        <button class="primary" type="submit">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- ---------- Salvar sala ---------- -->
   <dialog id="save-dialog">
     <h2>Salvar sala</h2>
@@ -228,5 +265,6 @@
   <script src="avatar.js"></script>
   <script src="themes.js"></script>
   <script src="app.js"></script>
+  <script src="movies.js"></script>
 </body>
 </html>

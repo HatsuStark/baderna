@@ -18,4 +18,5 @@ contextBridge.exposeInMainWorld('baderna', {
   stopScreenAudio: () => ipcRenderer.invoke('screen-audio:stop'),
   onScreenAudioData: (cb) => subscribe('screen-audio:data', cb),
   onScreenAudioError: (cb) => subscribe('screen-audio:error', cb),
+  searchMovies: (query) => ipcRenderer.invoke('movies:search', query),
 });
