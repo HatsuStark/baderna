@@ -23,8 +23,8 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 640,
-    minHeight: 480,
+    minWidth: 1024,
+    minHeight: 700,
     backgroundColor: '#1e1f22',
     autoHideMenuBar: true,
     icon: path.join(__dirname, 'build', 'icon.png'),

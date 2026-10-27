@@ -5,14 +5,22 @@
 // fixo da sala (ROOM_PREFIX + código); quem entra fala com o beacon só pra
 // receber a lista de membros e depois conecta direto em cada um.
 // Se o host sai, o membro mais antigo (menor seq) assume o beacon.
+//
+// Mensagens no DataChannel: profile (nome/boneco/mudo), chat, theme (só do
+// host), host, screen-stop, bye. Tudo que vem de fora é validado antes de
+// chegar no DOM; texto sempre via textContent.
 
 const ROOM_PREFIX = 'baderna-v1-';
 const SPEAKING_THRESHOLD = 0.02;
+const SPEAKING_HOLD_MS = 250;
 const ICE_GRACE_MS = 4000;
 const BEACON_RETRY_MS = 2000;
 const BEACON_MAX_TRIES = 30;
 const WELCOME_TIMEOUT_MS = 10000;
 const ROSTER_STALE_MS = 15000;
+const CHAT_MAX = 500;
+const NAME_MAX = 24;
+const CHAT_GROUP_MS = 2 * 60 * 1000;
 
 const AUDIO_CONSTRAINTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
@@ -32,12 +40,16 @@ const MIN_SCREEN_BITRATE = 300_000;
 const VOICE_RESERVE_BPS = 50_000; // por pessoa: voz Opus + overhead
 const UPLOAD_HEADROOM = 0.8;      // usa só 80% do upload informado
 
+const NAME_COLORS = ['#19f0ff', '#ff2bd6', '#b6ff3b', '#ffb627', '#ff8a3d', '#a78bfa', '#4dd4ac'];
+
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const state = {
   room: null,
   name: null,
+  avatar: null,       // meu boneco (salvo no PC)
+  theme: DEFAULT_THEME,
   mainPeer: null,
   beacon: null,
   localStream: null,
@@ -46,16 +58,21 @@ const state = {
   nextSeq: 1,      // só usado pelo host
   hostId: null,
   muted: false,
+  deaf: false,
+  mutedBeforeDeaf: false,
   leaving: false,
   members: new Map(), // peerId -> member
   roster: new Map(),  // só no host: peerId -> { name, seq }
-  selfLi: null,
+  selfSeat: null,
   audioCtx: null,
-  meters: new Map(),  // peerId -> { src, analyser, buf }
+  meters: new Map(),  // peerId -> { src, analyser, buf, lastLoud, level }
   rafId: 0,
   preview: null,      // teste de microfone no lobby: { stream, ctx, raf }
   previewToken: 0,
   screen: null,       // minha tela compartilhada: { stream, preset, mode, audio, codecs }
+  screens: new Map(), // telas visíveis: peerId -> { stream, label, audible, video, card }
+  watching: null,     // peerId da tela aberta por cima do chat
+  lastChat: null,     // { author, time, el } pra agrupar mensagens seguidas
   codecOrder: null,   // preferência de codec de vídeo desta máquina (medida uma vez)
   codecOrderPromise: null,
 };
@@ -101,10 +118,14 @@ function broadcast(msg) {
   }
 }
 
+function myProfile() {
+  return { type: 'profile', name: state.name, avatar: state.avatar, muted: state.muted, deaf: state.deaf };
+}
+
 // ---------- Entrar / sair ----------
 
 async function join() {
-  const name = $('name').value.trim();
+  const name = $('name').value.trim().slice(0, NAME_MAX);
   const room = normalizeRoom($('room').value);
   $('room').value = room;
   if (!name || !room) return setLobbyStatus('Preencha nome e código da sala.');
@@ -158,6 +179,7 @@ function joinViaBeacon() {
       conn.close();
       state.seq = msg.seq;
       state.hostId = msg.hostId;
+      if (THEMES[msg.theme]) state.theme = msg.theme;
       for (const m of msg.members) connectTo(m.id, m.name, m.seq);
       resolve();
     });
@@ -176,7 +198,9 @@ async function leave() {
 async function teardown() {
   state.leaving = true;
   stopShare();
+  closeWatch();
   for (const id of [...state.members.keys()]) removeMember(id);
+  for (const id of [...state.screens.keys()]) unregisterScreen(id);
   destroyPeer(state.beacon);
   destroyPeer(state.mainPeer);
   state.localStream?.getTracks().forEach((t) => t.stop());
@@ -186,12 +210,13 @@ async function teardown() {
 
   Object.assign(state, {
     room: null, mainPeer: null, beacon: null, localStream: null, myId: null,
-    seq: 0, nextSeq: 1, hostId: null, muted: false, leaving: false,
-    roster: new Map(), selfLi: null, audioCtx: null, rafId: 0,
+    seq: 0, nextSeq: 1, hostId: null, muted: false, deaf: false, mutedBeforeDeaf: false, leaving: false,
+    roster: new Map(), selfSeat: null, audioCtx: null, rafId: 0, lastChat: null, theme: DEFAULT_THEME,
   });
-  $('members').replaceChildren();
-  $('stage').replaceChildren();
-  $('stage').hidden = true;
+  $('seats').replaceChildren();
+  $('timeline').replaceChildren();
+  $('live-chips').replaceChildren();
+  applyTheme(DEFAULT_THEME);
 }
 
 // ---------- Host ----------
@@ -209,9 +234,10 @@ function becomeHost() {
         type: 'welcome',
         seq,
         hostId: state.myId,
+        theme: state.theme,
         members: [...state.roster].map(([id, r]) => ({ id, ...r })),
       });
-      state.roster.set(conn.peer, { name: conn.metadata?.name ?? '?', seq });
+      state.roster.set(conn.peer, { name: cleanName(conn.metadata?.name), seq });
       // Se o recém-chegado não completar a conexão comigo, some da lista.
       setTimeout(() => {
         if (!state.members.has(conn.peer)) state.roster.delete(conn.peer);
@@ -235,17 +261,18 @@ function handleHostLeft() {
   state.hostId = candidates[0].id;
   renderAll();
   if (state.hostId === state.myId) claimBeaconWithRetry();
+  else addSystem(`${state.members.get(state.hostId)?.name ?? 'Alguém'} agora é o host.`);
 }
 
 async function claimBeaconWithRetry() {
-  setRoomStatus('Host saiu. Assumindo a sala…');
+  addSystem('O host saiu. Assumindo a sala…');
   // O servidor do PeerJS pode demorar pra liberar o ID se o host caiu sem fechar.
   for (let i = 0; i < BEACON_MAX_TRIES; i++) {
     if (!state.mainPeer || state.hostId !== state.myId) return;
     try {
       if (await tryClaimBeacon()) {
         becomeHost();
-        setRoomStatus('Você agora é o host.');
+        addSystem('Você agora é o host.');
         return;
       }
     } catch (err) {
@@ -253,7 +280,7 @@ async function claimBeaconWithRetry() {
     }
     await sleep(BEACON_RETRY_MS);
   }
-  setRoomStatus('Não deu pra assumir o código da sala. Quem já está aqui continua conectado, mas ninguém novo consegue entrar.');
+  addSystem('Não deu pra assumir o código da sala. Quem já está aqui continua conectado, mas ninguém novo consegue entrar.');
 }
 
 // ---------- Membros ----------
@@ -262,9 +289,12 @@ function wireMainPeer() {
   const peer = state.mainPeer;
 
   peer.on('connection', (conn) => {
-    const { name, seq, muted } = conn.metadata ?? {};
-    const member = upsertMember(conn.peer, { name, seq, muted: !!muted });
+    const { name, seq, avatar } = conn.metadata ?? {};
+    const isNew = !state.members.has(conn.peer);
+    const member = upsertMember(conn.peer, { name, seq, avatar });
     attachConn(member, conn);
+    // Só anuncia quem chegou depois de mim; o resto já estava aqui.
+    if (isNew && Number(seq) > state.seq) addSystem(`${member.name} chegou na baderna.`);
   });
 
   peer.on('call', (call) => {
@@ -295,32 +325,37 @@ function connectTo(id, name, seq) {
   if (id === state.myId || state.members.has(id)) return;
   const member = upsertMember(id, { name, seq });
   attachConn(member, state.mainPeer.connect(id, {
-    metadata: { name: state.name, seq: state.seq, muted: state.muted },
+    metadata: { name: state.name, seq: state.seq, avatar: state.avatar },
     reliable: true,
   }));
   attachCall(member, state.mainPeer.call(id, state.localStream));
 }
 
-function upsertMember(id, { name, seq, muted }) {
+function upsertMember(id, { name, seq, avatar, muted, deaf }) {
   let m = state.members.get(id);
   if (!m) {
     const audio = new Audio();
     audio.autoplay = true;
+    audio.muted = state.deaf;
     applySink(audio);
     m = {
-      id, name: '…', seq: Infinity, muted: false, conn: null, call: null, audio, iceTimer: 0, li: null,
+      id, name: '…', seq: Infinity, avatar: null, muted: false, deaf: false,
+      conn: null, call: null, audio, iceTimer: 0, seat: null,
       screenIn: null,  // tela dele chegando pra mim
       screenOut: null, // minha tela indo pra ele
     };
-    m.li = createTile(m);
+    m.seat = createSeat(m);
     state.members.set(id, m);
-    $('members').append(m.li);
   }
-  if (name !== undefined) m.name = name;
-  if (seq !== undefined) m.seq = seq;
-  if (muted !== undefined) m.muted = muted;
+  if (name !== undefined) m.name = cleanName(name);
+  if (seq !== undefined && Number.isFinite(Number(seq))) m.seq = Number(seq);
+  if (avatar !== undefined) m.avatar = sanitizeAvatar(avatar);
+  if (muted !== undefined) m.muted = !!muted;
+  if (deaf !== undefined) m.deaf = !!deaf;
   if (state.hostId === state.myId) state.roster.set(id, { name: m.name, seq: m.seq });
-  renderTile(m);
+  renderSeat(m);
+  sortSeats();
+  updateCount();
   return m;
 }
 
@@ -330,6 +365,7 @@ function attachConn(member, conn) {
   conn.on('close', () => removeMember(member.id));
   conn.on('open', () => {
     watchIce(member, conn.peerConnection);
+    conn.send(myProfile());
     // Quem chega depois também recebe a tela que já está rolando.
     if (state.screen) sendScreenTo(member);
   });
@@ -358,11 +394,24 @@ function watchIce(member, pc) {
 
 function handleMessage(member, msg) {
   switch (msg?.type) {
-    case 'mute':
-      member.muted = !!msg.muted;
-      renderTile(member);
+    case 'profile': {
+      const before = member.name;
+      upsertMember(member.id, { name: msg.name, avatar: msg.avatar, muted: msg.muted, deaf: msg.deaf });
+      if (before !== '…' && before !== member.name) addSystem(`${before} agora é ${member.name}.`);
+      break;
+    }
+    case 'chat':
+      if (typeof msg.text === 'string' && msg.text.trim()) addChat(member.id, member.name, member.avatar, msg.text);
+      break;
+    case 'theme':
+      // Só o host manda no tema.
+      if (member.id === state.hostId && THEMES[msg.theme] && msg.theme !== state.theme) {
+        applyTheme(msg.theme);
+        addSystem(`${member.name} mudou o tema pra ${THEMES[msg.theme].name}.`);
+      }
       break;
     case 'host':
+      if (typeof msg.hostId !== 'string') break;
       state.hostId = msg.hostId;
       renderAll();
       break;
@@ -386,16 +435,119 @@ function removeMember(id) {
   closeScreenIn(m);
   m.screenOut?.close();
   m.audio.srcObject = null;
-  m.li.remove();
+  m.seat.remove();
   removeMeter(id);
-  if (!state.leaving && id === state.hostId) handleHostLeft();
+  updateCount();
+  if (state.leaving) return;
+  addSystem(`${m.name} saiu.`);
+  if (id === state.hostId) handleHostLeft();
+}
+
+// ---------- Chat ----------
+
+function sendChat(e) {
+  e.preventDefault();
+  const text = $('chat-input').value.trim().slice(0, CHAT_MAX);
+  if (!text || !state.mainPeer) return;
+  $('chat-input').value = '';
+  broadcast({ type: 'chat', text });
+  addChat(state.myId, state.name, state.avatar, text);
+}
+
+function addChat(authorId, name, avatar, rawText) {
+  const text = String(rawText).slice(0, CHAT_MAX);
+  const now = Date.now();
+  const last = state.lastChat;
+  const grouped = last && last.author === authorId && now - last.time < CHAT_GROUP_MS;
+
+  const msg = document.createElement('div');
+  msg.className = grouped ? 'msg cont' : 'msg';
+  const av = document.createElement('div');
+  av.className = 'av';
+  if (!grouped) av.innerHTML = avatarFaceSvg(avatar); // SVG sanitizado em avatar.js
+  const body = document.createElement('div');
+  body.className = 'body';
+  if (!grouped) {
+    const who = document.createElement('div');
+    who.className = 'who';
+    const b = document.createElement('b');
+    b.textContent = name;
+    b.style.color = nameColor(authorId);
+    const time = document.createElement('time');
+    time.textContent = new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    who.append(b, time);
+    body.append(who);
+  }
+  const p = document.createElement('p');
+  p.textContent = text;
+  body.append(p);
+  msg.append(av, body);
+  appendTimeline(msg);
+  state.lastChat = { author: authorId, time: now };
+}
+
+function addSystem(text) {
+  if (!text) return;
+  const el = document.createElement('div');
+  el.className = 'sys';
+  el.textContent = text;
+  appendTimeline(el);
+  state.lastChat = null;
+}
+
+function appendTimeline(el) {
+  const tl = $('timeline');
+  const nearBottom = tl.scrollHeight - tl.scrollTop - tl.clientHeight < 120;
+  tl.append(el);
+  if (nearBottom) tl.scrollTop = tl.scrollHeight;
+}
+
+function nameColor(id) {
+  let h = 0;
+  for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return NAME_COLORS[h % NAME_COLORS.length];
+}
+
+// ---------- Tema da sala ----------
+
+function applyTheme(id) {
+  const theme = THEMES[id] ? id : DEFAULT_THEME;
+  state.theme = theme;
+  $('wall').innerHTML = themeSvg(theme);
+  document.documentElement.style.setProperty('--bg', THEMES[theme].bg);
+  $('theme-name').textContent = THEMES[theme].name;
+  for (const btn of $('theme-grid').querySelectorAll('button')) {
+    btn.classList.toggle('selected', btn.dataset.theme === theme);
+  }
+}
+
+function setTheme(id) {
+  if (state.hostId !== state.myId || !THEMES[id] || id === state.theme) return;
+  applyTheme(id);
+  broadcast({ type: 'theme', theme: id });
+  addSystem(`Você mudou o tema pra ${THEMES[id].name}.`);
+}
+
+function buildThemeGrid() {
+  if ($('theme-grid').children.length) return;
+  for (const [id, theme] of Object.entries(THEMES)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.theme = id;
+    btn.innerHTML = `<svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">${themeSvg(id)}</svg>`;
+    const label = document.createElement('span');
+    label.textContent = theme.name;
+    btn.append(label);
+    btn.addEventListener('click', () => setTheme(id));
+    $('theme-grid').append(btn);
+  }
 }
 
 // ---------- Compartilhar tela ----------
 
 async function openSharePicker() {
   if (state.screen) return stopShare();
-  if (!window.baderna) return setRoomStatus('Compartilhar tela só funciona no app.');
+  if (!window.baderna) return addSystem('Compartilhar tela só funciona no app.');
 
   const dialog = $('share-dialog');
   $('share-quality').value = loadPref('shareQuality') || '1080p30';
@@ -460,13 +612,13 @@ async function shareSource(sourceId) {
         stream.addTrack(audio.track);
       } catch (err) {
         console.error(err);
-        setRoomStatus(`Tela indo sem áudio: ${err.message}`);
+        addSystem(`Tela indo sem áudio: ${err.message}`);
       }
     }
     await beginShare(stream, presetKey, mode, audio);
   } catch (err) {
     console.error(err);
-    setRoomStatus(err?.name === 'NotAllowedError'
+    addSystem(err?.name === 'NotAllowedError'
       ? 'Compartilhamento cancelado ou bloqueado pelo sistema.'
       : `Não deu pra compartilhar: ${describeError(err)}`);
   }
@@ -494,7 +646,7 @@ async function startScreenAudio(sourceId) {
     const pcm = new Int16Array(bytes.slice().buffer);
     player.port.postMessage(pcm, [pcm.buffer]);
   }));
-  offs.push(window.baderna.onScreenAudioError((msg) => setRoomStatus(`Áudio da tela parou: ${msg}`)));
+  offs.push(window.baderna.onScreenAudioError((msg) => addSystem(`Áudio da tela parou: ${msg}`)));
 
   const track = dest.stream.getAudioTracks()[0];
   track.contentHint = 'music';
@@ -694,7 +846,7 @@ async function retuneScreen() {
   const info = pcs.length
     ? ` · ${[...codecs].join('/')} · ${pcs.length} × ${mbps(total / pcs.length)} Mbps = ${mbps(total)} Mbps`
     : '';
-  setScreenLabel(state.myId, `${state.name} (você)${info}`);
+  setScreenLabel(state.myId, `Sua tela${info}`);
 }
 
 function updateShareEstimate() {
@@ -737,8 +889,9 @@ async function beginShare(stream, presetKey, mode, audio = null) {
 
   state.screen = { stream, preset, mode, audio, codecs };
   for (const m of state.members.values()) sendScreenTo(m);
-  showScreen(state.myId, `${state.name} (você)`, stream, false);
-  updateShareButton();
+  registerScreen(state.myId, 'Sua tela', stream, false);
+  addSystem('Você começou a compartilhar a tela.');
+  updateDock();
   renderSelf();
 }
 
@@ -753,8 +906,8 @@ function stopShare() {
     m.screenOut = null;
   }
   broadcast({ type: 'screen-stop' });
-  hideScreen(state.myId);
-  updateShareButton();
+  unregisterScreen(state.myId);
+  updateDock();
   renderSelf();
 }
 
@@ -782,8 +935,8 @@ function attachScreenIn(member, call) {
   member.screenIn?.close();
   member.screenIn = call;
   call.on('stream', (stream) => {
-    showScreen(member.id, member.name, stream, true);
-    renderTile(member);
+    registerScreen(member.id, `Tela de ${member.name}`, stream, true);
+    renderSeat(member);
   });
   call.on('close', () => {
     if (member.screenIn === call) closeScreenIn(member);
@@ -794,84 +947,188 @@ function closeScreenIn(member) {
   const call = member.screenIn;
   member.screenIn = null;
   call?.close();
-  hideScreen(member.id);
-  if (state.members.has(member.id)) renderTile(member);
+  unregisterScreen(member.id);
+  if (state.members.has(member.id)) renderSeat(member);
 }
 
+// ---------- Telas: card no chat + overlay por cima do chat ----------
+
 // audible: toca o áudio da tela. Falso na minha própria prévia (já ouço o original).
-function showScreen(id, label, stream, audible) {
-  let fig = [...$('stage').children].find((el) => el.dataset.id === id);
-  if (!fig) {
-    fig = document.createElement('figure');
-    fig.className = 'screen';
-    fig.dataset.id = id;
+function registerScreen(id, label, stream, audible) {
+  let s = state.screens.get(id);
+  // PeerJS dispara 'stream' uma vez por track (vídeo + áudio): mesmo stream, nada a fazer.
+  if (s?.stream === stream) return;
+  if (!s) {
     const video = document.createElement('video');
     video.autoplay = true;
     video.playsInline = true;
-    video.muted = !audible;
+    video.muted = true;
     applySink(video);
-    const caption = document.createElement('figcaption');
-    const name = document.createElement('span');
-    caption.append(name);
-    if (audible) {
-      const volume = document.createElement('input');
-      volume.type = 'range';
-      volume.min = '0';
-      volume.max = '1';
-      volume.step = '0.05';
-      volume.value = '1';
-      volume.title = 'Volume da tela';
-      volume.addEventListener('input', () => { video.volume = Number(volume.value); });
-      caption.append(volume);
-    }
-    const full = document.createElement('button');
-    full.type = 'button';
-    full.textContent = '⛶';
-    full.title = 'Tela cheia (ou duplo clique)';
-    full.addEventListener('click', () => toggleFullscreen(fig));
-    caption.append(full);
-    fig.append(video, caption);
-    fig.addEventListener('dblclick', () => toggleFullscreen(fig));
-    $('stage').append(fig);
+    s = { video, card: null };
+    state.screens.set(id, s);
   }
-  setScreenLabel(id, label);
-  fig.querySelector('video').srcObject = stream;
-  $('stage').hidden = false;
+  Object.assign(s, { stream, label, audible });
+  s.video.srcObject = stream;
+  s.card?.classList.add('ended');
+  s.card = createScreenCard(id, label, stream);
+  appendTimeline(s.card.closest('.msg'));
+  state.lastChat = null;
+  updateLiveChips();
+  if (state.watching === id) watch(id);
+}
+
+function unregisterScreen(id) {
+  const s = state.screens.get(id);
+  if (!s) return;
+  if (state.watching === id) closeWatch();
+  state.screens.delete(id);
+  s.video.srcObject = null;
+  if (s.card) {
+    s.card.classList.add('ended');
+    s.card.querySelector('.shot').replaceChildren();
+    s.card.querySelector('button').disabled = true;
+  }
+  updateLiveChips();
+}
+
+function createScreenCard(id, label, stream) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg';
+  const av = document.createElement('div');
+  av.className = 'av';
+  const avatar = id === state.myId ? state.avatar : state.members.get(id)?.avatar;
+  av.innerHTML = avatarFaceSvg(avatar);
+  const body = document.createElement('div');
+  body.className = 'body';
+  const who = document.createElement('div');
+  who.className = 'who';
+  const b = document.createElement('b');
+  b.textContent = id === state.myId ? state.name : state.members.get(id)?.name ?? '…';
+  b.style.color = nameColor(id);
+  const time = document.createElement('time');
+  time.textContent = 'ao vivo';
+  who.append(b, time);
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  const shot = document.createElement('div');
+  shot.className = 'shot';
+  const thumb = document.createElement('video');
+  thumb.autoplay = true;
+  thumb.muted = true;
+  thumb.playsInline = true;
+  thumb.srcObject = stream;
+  shot.append(thumb);
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  const span = document.createElement('span');
+  span.textContent = label;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = id === state.myId ? 'Ver prévia ⤢' : 'Assistir ⤢';
+  btn.addEventListener('click', () => watch(id));
+  meta.append(span, btn);
+  card.append(shot, meta);
+  body.append(who, card);
+  wrap.append(av, body);
+  return card;
+}
+
+function watch(id) {
+  const s = state.screens.get(id);
+  if (!s) return;
+  if (state.watching && state.watching !== id) closeWatch();
+  state.watching = id;
+  $('screen-box').replaceChildren(s.video);
+  s.video.volume = Number($('screen-volume').value);
+  s.video.muted = !s.audible || state.deaf;
+  s.video.play().catch(() => {});
+  $('screen-label').textContent = s.label;
+  $('screen-volume').parentElement.hidden = !s.audible;
+  $('screen-view').hidden = false;
+}
+
+function closeWatch() {
+  const s = state.screens.get(state.watching);
+  if (s) s.video.muted = true;
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  state.watching = null;
+  $('screen-box').replaceChildren();
+  $('screen-view').hidden = true;
 }
 
 function setScreenLabel(id, label) {
-  const fig = [...$('stage').children].find((el) => el.dataset.id === id);
-  if (fig) fig.querySelector('span').textContent = label;
+  const s = state.screens.get(id);
+  if (!s) return;
+  s.label = label;
+  if (s.card) s.card.querySelector('.meta span').textContent = label;
+  if (state.watching === id) $('screen-label').textContent = label;
 }
 
-function hideScreen(id) {
-  const fig = [...$('stage').children].find((el) => el.dataset.id === id);
-  if (!fig) return;
-  if (document.fullscreenElement === fig) document.exitFullscreen().catch(() => {});
-  fig.querySelector('video').srcObject = null;
-  fig.remove();
-  $('stage').hidden = $('stage').children.length === 0;
-}
-
-function toggleFullscreen(el) {
+function toggleFullscreen() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-  else el.requestFullscreen().catch((err) => console.warn('fullscreen', err));
+  else $('screen-view').requestFullscreen().catch((err) => console.warn('fullscreen', err));
 }
 
-function updateShareButton() {
-  $('share').textContent = state.screen ? '⏹️ Parar de compartilhar' : '🖥️ Compartilhar tela';
-  $('share').classList.toggle('active', !!state.screen);
+function updateLiveChips() {
+  const chips = [];
+  for (const id of state.screens.keys()) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chip live';
+    btn.textContent = id === state.myId ? 'você ao vivo' : `${state.members.get(id)?.name ?? '…'} ao vivo`;
+    btn.addEventListener('click', () => watch(id));
+    chips.push(btn);
+  }
+  $('live-chips').replaceChildren(...chips);
 }
 
-// ---------- Microfone ----------
+// ---------- Microfone / fone ----------
+
+function setMuted(muted) {
+  state.muted = muted;
+  state.localStream?.getAudioTracks().forEach((t) => { t.enabled = !muted; });
+}
 
 function toggleMute() {
-  state.muted = !state.muted;
-  state.localStream.getAudioTracks().forEach((t) => { t.enabled = !state.muted; });
-  broadcast({ type: 'mute', muted: state.muted });
-  $('mute').textContent = state.muted ? '🔇 Desmutar' : '🎤 Mutar';
-  $('mute').classList.toggle('active', state.muted);
+  // Mexer no mic estando surdo volta a ouvir e abre o mic, igual Discord.
+  if (state.deaf) {
+    state.mutedBeforeDeaf = false;
+    return toggleDeaf();
+  }
+  setMuted(!state.muted);
+  broadcast(myProfile());
+  updateDock();
   renderSelf();
+}
+
+function toggleDeaf() {
+  state.deaf = !state.deaf;
+  if (state.deaf) {
+    state.mutedBeforeDeaf = state.muted;
+    setMuted(true);
+  } else {
+    setMuted(state.mutedBeforeDeaf);
+  }
+  for (const m of state.members.values()) m.audio.muted = state.deaf;
+  const s = state.screens.get(state.watching);
+  if (s) s.video.muted = !s.audible || state.deaf;
+  broadcast(myProfile());
+  updateDock();
+  renderSelf();
+}
+
+async function switchMic(deviceId) {
+  const stream = await openMic(deviceId);
+  const track = stream.getAudioTracks()[0];
+  track.enabled = !state.muted;
+  for (const m of state.members.values()) {
+    const sender = m.call?.peerConnection?.getSenders().find((s) => s.track?.kind === 'audio');
+    await sender?.replaceTrack(track).catch((err) => console.warn('replaceTrack', err));
+  }
+  state.localStream?.getTracks().forEach((t) => t.stop());
+  state.localStream = stream;
+  addMeter(state.myId, stream);
 }
 
 // ---------- Indicador de quem está falando ----------
@@ -883,7 +1140,7 @@ function addMeter(id, stream) {
   const analyser = state.audioCtx.createAnalyser();
   analyser.fftSize = 512;
   src.connect(analyser);
-  state.meters.set(id, { src, analyser, buf: new Float32Array(analyser.fftSize) });
+  state.meters.set(id, { src, analyser, buf: new Float32Array(analyser.fftSize), lastLoud: 0, level: 0 });
   if (!state.rafId) tick();
 }
 
@@ -895,13 +1152,21 @@ function removeMeter(id) {
 }
 
 function tick() {
-  for (const [id, { analyser, buf }] of state.meters) {
-    analyser.getFloatTimeDomainData(buf);
+  const now = performance.now();
+  for (const [id, meter] of state.meters) {
+    meter.analyser.getFloatTimeDomainData(meter.buf);
     let sum = 0;
-    for (const v of buf) sum += v * v;
-    const speaking = Math.sqrt(sum / buf.length) > SPEAKING_THRESHOLD;
-    const li = id === state.myId ? state.selfLi : state.members.get(id)?.li;
-    li?.classList.toggle('speaking', speaking);
+    for (const v of meter.buf) sum += v * v;
+    meter.level = Math.sqrt(sum / meter.buf.length);
+    if (meter.level > SPEAKING_THRESHOLD) meter.lastLoud = now;
+    // Segura a boca aberta um pouco pra não piscar entre sílabas.
+    const speaking = now - meter.lastLoud < SPEAKING_HOLD_MS;
+    const seat = id === state.myId ? state.selfSeat : state.members.get(id)?.seat;
+    seat?.classList.toggle('speaking', speaking);
+  }
+  if ($('settings-dialog').open) {
+    const mine = state.meters.get(state.myId);
+    if (mine) $('mic-level').style.width = `${Math.min(100, mine.level * 400)}%`;
   }
   state.rafId = requestAnimationFrame(tick);
 }
@@ -968,6 +1233,7 @@ async function populateDevices() {
   const devices = await navigator.mediaDevices.enumerateDevices();
   fillSelect($('mic'), devices.filter((d) => d.kind === 'audioinput'), loadPref('micId'));
   fillSelect($('speaker'), devices.filter((d) => d.kind === 'audiooutput'), loadPref('speakerId'));
+  updateMicName();
 }
 
 function fillSelect(select, devices, preferred) {
@@ -976,9 +1242,14 @@ function fillSelect(select, devices, preferred) {
   if (devices.some((d) => d.deviceId === current)) select.value = current;
 }
 
-function applySink(audio) {
+function updateMicName() {
+  const opt = $('mic').selectedOptions[0];
+  $('mic-name').textContent = opt ? opt.textContent.replace(/^(Default|Padrão) - /, '') : 'Microfone padrão';
+}
+
+function applySink(el) {
   const id = $('speaker').value;
-  if (id && audio.setSinkId) audio.setSinkId(id).catch((err) => console.warn('setSinkId', err));
+  if (id && el.setSinkId) el.setSinkId(id).catch((err) => console.warn('setSinkId', err));
 }
 
 async function initDevices() {
@@ -997,76 +1268,221 @@ function savePref(key, value) {
   try { localStorage.setItem(key, value); } catch {}
 }
 
-// ---------- UI ----------
+// ---------- Cadeiras ----------
 
-function createTile(member) {
-  const li = document.createElement('li');
-  const avatar = document.createElement('div');
-  avatar.className = 'avatar';
-  const name = document.createElement('div');
-  name.className = 'member-name';
-  const meta = document.createElement('div');
-  meta.className = 'member-meta';
-  li.append(avatar, name, meta);
+const SEAT_SKELETON = '<div class="aura"></div><div class="ring"></div><div class="badges"></div><div class="figure"></div><div class="tag"></div>';
 
+function createSeat(member) {
+  const seat = document.createElement('div');
+  seat.className = 'seat';
+  seat.innerHTML = SEAT_SKELETON;
   if (member) {
-    const volume = document.createElement('input');
-    volume.type = 'range';
-    volume.min = '0';
-    volume.max = '1';
-    volume.step = '0.05';
-    volume.value = '1';
-    volume.title = 'Volume';
-    volume.addEventListener('input', () => { member.audio.volume = Number(volume.value); });
-    li.append(volume);
+    const vol = document.createElement('input');
+    vol.type = 'range';
+    vol.className = 'vol';
+    vol.min = '0';
+    vol.max = '1';
+    vol.step = '0.05';
+    vol.value = '1';
+    vol.title = 'Volume';
+    vol.addEventListener('input', () => { member.audio.volume = Number(vol.value); });
+    seat.append(vol);
   }
-  return li;
+  $('seats').append(seat);
+  return seat;
 }
 
-function fillTile(li, name, tags) {
-  li.querySelector('.avatar').textContent = (name || '?').charAt(0).toUpperCase();
-  li.querySelector('.member-name').textContent = name;
-  li.querySelector('.member-meta').textContent = tags.filter(Boolean).join(' · ');
+function fillSeat(seat, { id, name, avatar, host, muted, deaf, sharing, self }) {
+  const key = JSON.stringify(avatar);
+  if (seat.dataset.avatar !== key) {
+    seat.dataset.avatar = key;
+    seat.querySelector('.figure').innerHTML = avatarSeatSvg(avatar); // sanitizado em avatar.js
+  }
+  seat.dataset.id = id;
+  seat.classList.toggle('self', !!self);
+  seat.querySelector('.tag').textContent = name;
+  const badges = [];
+  const badge = (cls, text, onClick) => {
+    const el = document.createElement('span');
+    el.className = `badge ${cls}`;
+    el.textContent = text;
+    if (onClick) el.addEventListener('click', onClick);
+    badges.push(el);
+  };
+  if (host) badge('host', 'HOST');
+  if (sharing) badge('share', 'AO VIVO', () => watch(id));
+  if (deaf) badge('deaf', 'SURDO');
+  else if (muted) badge('muted', 'MUDO');
+  seat.querySelector('.badges').replaceChildren(...badges);
 }
 
-function renderTile(m) {
-  fillTile(m.li, m.name, [m.id === state.hostId && '👑 host', m.muted && '🔇 mutado', m.screenIn && '🖥️ tela']);
+function renderSeat(m) {
+  fillSeat(m.seat, {
+    id: m.id, name: m.name, avatar: m.avatar, host: m.id === state.hostId,
+    muted: m.muted, deaf: m.deaf, sharing: !!m.screenIn,
+  });
 }
 
 function renderSelf() {
-  if (!state.selfLi) return;
-  fillTile(state.selfLi, state.name, [
-    'você', state.myId === state.hostId && '👑 host', state.muted && '🔇 mutado', state.screen && '🖥️ tela',
-  ]);
+  if (!state.selfSeat) return;
+  fillSeat(state.selfSeat, {
+    id: state.myId, name: state.name, avatar: state.avatar, host: state.myId === state.hostId,
+    muted: state.muted, deaf: state.deaf, sharing: !!state.screen, self: true,
+  });
+}
+
+function sortSeats() {
+  const entries = [...state.members.values()].map((m) => [m.seq, m.seat]);
+  if (state.selfSeat) entries.push([state.seq, state.selfSeat]);
+  entries.sort((a, b) => a[0] - b[0]);
+  for (const [, seat] of entries) $('seats').append(seat);
 }
 
 function renderAll() {
   renderSelf();
-  for (const m of state.members.values()) renderTile(m);
-  const host = state.hostId === state.myId;
-  $('role').textContent = host ? 'host' : 'convidado';
+  for (const m of state.members.values()) renderSeat(m);
+  updateThemeControls();
 }
 
+function updateCount() {
+  if (!state.room) return;
+  const n = state.members.size + 1;
+  $('count-chip').textContent = `${n} na baderna`;
+}
+
+function updateDock() {
+  $('btn-mic').classList.toggle('off', state.muted);
+  $('btn-mic').title = state.muted ? 'Desmutar microfone' : 'Mutar microfone';
+  $('btn-deaf').classList.toggle('off', state.deaf);
+  $('btn-deaf').title = state.deaf ? 'Voltar a ouvir' : 'Silenciar tudo';
+  $('btn-share').classList.toggle('on', !!state.screen);
+  $('btn-share').title = state.screen ? 'Parar de compartilhar' : 'Compartilhar tela';
+}
+
+function updateThemeControls() {
+  const host = state.hostId === state.myId;
+  $('theme-chip').disabled = !host;
+  $('theme-chip').title = host ? 'Mudar tema da sala' : 'Só o host muda o tema';
+  $('theme-note').textContent = host ? 'Você é o host: o tema muda pra todo mundo.' : 'Só o host muda o tema da sala.';
+  for (const btn of $('theme-grid').querySelectorAll('button')) btn.disabled = !host;
+}
+
+// ---------- Editor de boneco ----------
+
+let avatarDraft = null;
+
+function openAvatarEditor() {
+  avatarDraft = { ...state.avatar };
+  renderAvatarEditor();
+  $('avatar-dialog').showModal();
+}
+
+function renderAvatarEditor() {
+  const preview = $('avatar-preview');
+  preview.innerHTML = '<div class="aura"></div><div class="ring"></div>';
+  preview.insertAdjacentHTML('beforeend', avatarSeatSvg(avatarDraft));
+
+  const fields = [];
+  for (const [key, options] of Object.entries(AVATAR_OPTIONS)) {
+    const field = document.createElement('div');
+    field.className = 'field';
+    const h = document.createElement('h4');
+    h.textContent = AVATAR_LABELS[key];
+    const list = document.createElement('div');
+    list.className = 'options';
+    for (const value of options) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      const isColor = value.startsWith('#');
+      btn.className = isColor ? 'swatch' : 'pill';
+      if (isColor) btn.style.background = value;
+      else btn.textContent = value;
+      btn.title = value;
+      btn.classList.toggle('selected', avatarDraft[key] === value);
+      btn.addEventListener('click', () => {
+        avatarDraft[key] = value;
+        renderAvatarEditor();
+      });
+      list.append(btn);
+    }
+    field.append(h, list);
+    fields.push(field);
+  }
+  const scroll = $('avatar-fields').scrollTop;
+  $('avatar-fields').replaceChildren(...fields);
+  $('avatar-fields').scrollTop = scroll;
+}
+
+function saveAvatar() {
+  state.avatar = sanitizeAvatar(avatarDraft);
+  savePref('avatar', JSON.stringify(state.avatar));
+  $('avatar-dialog').close();
+  renderLobbySeat();
+  $('settings-face').innerHTML = avatarFaceSvg(state.avatar);
+  if (state.mainPeer) {
+    renderSelf();
+    broadcast(myProfile());
+  }
+}
+
+function renderLobbySeat() {
+  if (!$('lobby-seat').firstChild) $('lobby-seat').innerHTML = SEAT_SKELETON;
+  fillSeat($('lobby-seat'), { id: 'lobby', name: $('name').value.trim() || 'Você', avatar: state.avatar });
+}
+
+function loadAvatar() {
+  try {
+    const saved = loadPref('avatar');
+    if (saved) return sanitizeAvatar(JSON.parse(saved));
+  } catch {}
+  // Primeira vez: sorteia um, pra ninguém entrar igual.
+  const fresh = randomAvatar();
+  savePref('avatar', JSON.stringify(fresh));
+  return fresh;
+}
+
+// ---------- Configurações ----------
+
+function openSettings(inRoom) {
+  buildThemeGrid();
+  applyTheme(state.theme);
+  updateThemeControls();
+  $('settings-face').innerHTML = avatarFaceSvg(state.avatar);
+  $('settings-dialog').classList.toggle('lobby-mode', !inRoom);
+  $('settings-dialog').showModal();
+}
+
+// ---------- Telas (lobby/sala) ----------
+
 function showRoom() {
-  state.selfLi = createTile(null);
-  $('members').prepend(state.selfLi);
+  state.selfSeat = createSeat(null);
   addMeter(state.myId, state.localStream);
-  $('room-title').textContent = `Sala ${state.room}`;
-  $('mute').textContent = '🎤 Mutar';
-  $('mute').classList.remove('active');
-  setRoomStatus('');
+  $('room-code').textContent = state.room;
+  applyTheme(state.theme);
+  updateDock();
+  updateCount();
   renderAll();
+  sortSeats();
   $('lobby').hidden = true;
   $('room-view').hidden = false;
+  addSystem(state.hostId === state.myId
+    ? `Sala ${state.room} criada. Manda o código pra galera!`
+    : `Você entrou na sala ${state.room}.`);
+  $('chat-input').focus();
 }
 
 function showLobby() {
   $('room-view').hidden = true;
   $('lobby').hidden = false;
+  renderLobbySeat();
 }
 
 function setLobbyStatus(text) { $('lobby-status').textContent = text; }
-function setRoomStatus(text) { $('room-status').textContent = text; }
+
+function cleanName(raw) {
+  const name = typeof raw === 'string' ? raw.trim().slice(0, NAME_MAX) : '';
+  return name || '?';
+}
 
 function normalizeRoom(raw) {
   return raw.trim().toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/^-+|-+$/g, '');
@@ -1088,30 +1504,68 @@ function describeError(err) {
 
 // ---------- Boot ----------
 
+state.avatar = loadAvatar();
+applyTheme(DEFAULT_THEME);
 $('name').value = loadPref('name');
+renderLobbySeat();
+
+$('name').addEventListener('input', renderLobbySeat);
 $('mic').addEventListener('change', () => {
   savePref('micId', $('mic').value);
-  startPreview();
+  updateMicName();
+  if (state.mainPeer) switchMic($('mic').value).catch((err) => addSystem(`Não deu pra trocar o microfone: ${describeError(err)}`));
+  else startPreview();
 });
 $('speaker').addEventListener('change', () => {
   savePref('speakerId', $('speaker').value);
   for (const m of state.members.values()) applySink(m.audio);
-  for (const v of $('stage').querySelectorAll('video')) applySink(v);
+  for (const s of state.screens.values()) applySink(s.video);
 });
 navigator.mediaDevices.addEventListener('devicechange', () => populateDevices().catch(console.warn));
 initDevices().catch(console.warn);
+
 $('gen').addEventListener('click', () => { $('room').value = randomRoomCode(); });
 $('join').addEventListener('click', join);
 $('room').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
-$('mute').addEventListener('click', toggleMute);
-$('leave').addEventListener('click', leave);
-$('share').addEventListener('click', openSharePicker);
+$('audio-lobby').addEventListener('click', () => openSettings(false));
+$('edit-avatar-lobby').addEventListener('click', openAvatarEditor);
+
+$('composer').addEventListener('submit', sendChat);
+$('room-chip').addEventListener('click', () => {
+  navigator.clipboard.writeText(state.room ?? '').then(() => addSystem('Código da sala copiado.'), () => {});
+});
+$('theme-chip').addEventListener('click', () => openSettings(true));
+
+$('btn-mic').addEventListener('click', toggleMute);
+$('btn-deaf').addEventListener('click', toggleDeaf);
+$('btn-share').addEventListener('click', openSharePicker);
+$('btn-settings').addEventListener('click', () => openSettings(true));
+$('btn-leave').addEventListener('click', leave);
+
+$('screen-close').addEventListener('click', closeWatch);
+$('screen-full').addEventListener('click', toggleFullscreen);
+$('screen-box').addEventListener('dblclick', toggleFullscreen);
+$('screen-volume').addEventListener('input', () => {
+  const s = state.screens.get(state.watching);
+  if (s) s.video.volume = Number($('screen-volume').value);
+});
+
+$('settings-close').addEventListener('click', () => $('settings-dialog').close());
+$('edit-avatar-room').addEventListener('click', openAvatarEditor);
+$('avatar-random').addEventListener('click', () => {
+  avatarDraft = randomAvatar();
+  renderAvatarEditor();
+});
+$('avatar-cancel').addEventListener('click', () => $('avatar-dialog').close());
+$('avatar-save').addEventListener('click', saveAvatar);
+
 $('share-cancel').addEventListener('click', () => $('share-dialog').close());
 $('share-upload').addEventListener('input', () => {
   savePref('uploadMbps', $('share-upload').value);
   updateShareEstimate();
 });
 for (const id of ['share-quality', 'share-audio']) $(id).addEventListener('change', updateShareEstimate);
+
 window.addEventListener('beforeunload', () => {
   broadcast({ type: 'bye' });
   destroyPeer(state.beacon);

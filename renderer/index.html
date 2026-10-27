@@ -5,49 +5,142 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://*.peerjs.com wss://*.peerjs.com">
   <title>Baderna</title>
+  <link rel="stylesheet" href="fonts/fonts.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <section id="lobby" class="card">
-    <h1>Baderna</h1>
-    <label>Seu nome
-      <input id="name" maxlength="24" placeholder="ex: Jeff">
-    </label>
-    <label>Código da sala
-      <div class="row">
-        <input id="room" maxlength="32" placeholder="ex: k7f2-p9qx">
-        <button id="gen" type="button" title="Gerar código aleatório">🎲</button>
+  <svg id="wall" class="wall" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+  <div class="vignette"></div>
+
+  <!-- ---------- Lobby ---------- -->
+  <section id="lobby" class="lobby">
+    <div class="lobby-card">
+      <div class="logo big">Baderna</div>
+      <div class="lobby-grid">
+        <div class="lobby-avatar">
+          <div id="lobby-seat" class="seat preview"></div>
+          <button id="edit-avatar-lobby" class="ghost" type="button">✎ Montar meu boneco</button>
+        </div>
+        <div class="lobby-form">
+          <label>Seu nome
+            <input id="name" maxlength="24" placeholder="ex: Jeff" autocomplete="off">
+          </label>
+          <label>Código da sala
+            <div class="row">
+              <input id="room" maxlength="32" placeholder="ex: k7f2-p9qx" autocomplete="off">
+              <button id="gen" class="ghost icon" type="button" title="Gerar código aleatório">🎲</button>
+            </div>
+          </label>
+          <button id="audio-lobby" class="ghost wide" type="button">🎧 <span id="mic-name">Microfone padrão</span></button>
+          <button id="join" class="primary wide" type="button">Entrar na baderna</button>
+          <p id="lobby-status" class="status"></p>
+        </div>
       </div>
-    </label>
-    <label>Microfone
-      <select id="mic"></select>
-      <div class="meter" title="Fale pra testar"><div id="mic-level"></div></div>
-    </label>
-    <label>Saída de som
-      <select id="speaker"></select>
-    </label>
-    <button id="join" class="primary">Entrar</button>
-    <p id="lobby-status" class="status"></p>
+    </div>
   </section>
 
-  <section id="room-view" hidden>
-    <header>
-      <div>
-        <strong id="room-title"></strong>
-        <span id="role" class="badge"></span>
-      </div>
-      <div class="controls">
-        <button id="share">🖥️ Compartilhar tela</button>
-        <button id="mute">🎤 Mutar</button>
-        <button id="leave" class="danger">Sair</button>
+  <!-- ---------- Sala ---------- -->
+  <section id="room-view" class="room" hidden>
+    <header class="topbar">
+      <div class="logo">Baderna</div>
+      <div class="chips">
+        <button id="room-chip" class="chip" type="button" title="Copiar código">sala <b id="room-code"></b></button>
+        <span id="count-chip" class="chip"></span>
+        <span id="live-chips" class="chips"></span>
+        <button id="theme-chip" class="chip" type="button">tema <b id="theme-name"></b></button>
       </div>
     </header>
-    <div id="stage" hidden></div>
-    <ul id="members"></ul>
-    <p id="room-status" class="status"></p>
+
+    <main class="center">
+      <div id="timeline" class="timeline"></div>
+      <section id="screen-view" class="screen-view" hidden>
+        <div class="screen-bar">
+          <span id="screen-label"></span>
+          <label class="screen-vol" title="Volume da tela">🔊
+            <input id="screen-volume" type="range" min="0" max="1" step="0.05" value="1">
+          </label>
+          <button id="screen-full" class="ghost icon" type="button" title="Tela cheia (ou duplo clique)">⛶</button>
+          <button id="screen-close" class="ghost icon" type="button" title="Voltar pro chat">✕</button>
+        </div>
+        <div id="screen-box" class="screen-box"></div>
+      </section>
+    </main>
+
+    <form id="composer" class="composer" autocomplete="off">
+      <input id="chat-input" maxlength="500" placeholder="Manda a braba na baderna…">
+      <button class="send" type="submit" title="Enviar">➤</button>
+    </form>
+
+    <div class="stage">
+      <div class="floor"></div>
+      <div id="seats" class="seats"></div>
+      <nav class="dock">
+        <button id="btn-mic" class="btn mic" type="button" title="Mutar microfone">
+          <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><path class="slash" d="M4 4l16 16"/></svg>
+        </button>
+        <button id="btn-deaf" class="btn ear" type="button" title="Silenciar tudo">
+          <svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="5" height="7" rx="2"/><rect x="16" y="14" width="5" height="7" rx="2"/><path class="slash" d="M4 4l16 16"/></svg>
+        </button>
+        <button id="btn-share" class="btn scr" type="button" title="Compartilhar tela">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+        </button>
+        <button id="btn-settings" class="btn set" type="button" title="Configurações">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+        </button>
+        <button id="btn-leave" class="btn out" type="button" title="Sair da sala">
+          <svg viewBox="0 0 24 24"><path d="M10 17l-5-5 5-5M5 12h11M15 4h4v16h-4"/></svg>
+        </button>
+      </nav>
+    </div>
   </section>
 
-  <dialog id="share-dialog">
+  <!-- ---------- Configurações ---------- -->
+  <dialog id="settings-dialog">
+    <h2>Configurações</h2>
+    <section class="settings-section">
+      <h3>Áudio</h3>
+      <label>Microfone
+        <select id="mic"></select>
+        <div class="meter" title="Fale pra testar"><div id="mic-level"></div></div>
+      </label>
+      <label>Saída de som
+        <select id="speaker"></select>
+      </label>
+    </section>
+    <section class="settings-section room-only">
+      <h3>Seu boneco</h3>
+      <div class="row">
+        <div id="settings-face" class="face-thumb"></div>
+        <button id="edit-avatar-room" class="ghost" type="button">✎ Montar meu boneco</button>
+      </div>
+    </section>
+    <section class="settings-section room-only">
+      <h3>Tema da sala</h3>
+      <p id="theme-note" class="status"></p>
+      <div id="theme-grid" class="theme-grid"></div>
+    </section>
+    <div class="dialog-actions">
+      <button id="settings-close" class="primary" type="button">Fechar</button>
+    </div>
+  </dialog>
+
+  <!-- ---------- Editor de boneco ---------- -->
+  <dialog id="avatar-dialog" class="wide-dialog">
+    <h2>Monte seu boneco</h2>
+    <div class="avatar-editor">
+      <div id="avatar-preview" class="seat preview big"></div>
+      <div id="avatar-fields" class="avatar-fields"></div>
+    </div>
+    <div class="dialog-actions">
+      <button id="avatar-random" class="ghost" type="button">🎲 Aleatório</button>
+      <span class="spacer"></span>
+      <button id="avatar-cancel" class="ghost" type="button">Cancelar</button>
+      <button id="avatar-save" class="primary" type="button">Salvar</button>
+    </div>
+  </dialog>
+
+  <!-- ---------- Compartilhar tela ---------- -->
+  <dialog id="share-dialog" class="wide-dialog">
     <h2>Compartilhar tela</h2>
     <div class="row">
       <label>Qualidade
@@ -77,11 +170,13 @@
     </label>
     <div id="sources" class="sources"></div>
     <div class="dialog-actions">
-      <button id="share-cancel" type="button">Cancelar</button>
+      <button id="share-cancel" class="ghost" type="button">Cancelar</button>
     </div>
   </dialog>
 
   <script src="../node_modules/peerjs/dist/peerjs.min.js"></script>
+  <script src="avatar.js"></script>
+  <script src="themes.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
