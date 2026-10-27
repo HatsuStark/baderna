@@ -1007,8 +1007,8 @@ async function retuneScreen() {
   if (state.screen === screen) updateShareLabel();
 }
 
-// "Sua tela · 1080p30, 4,2 Mbps": a melhor qualidade que está saindo e o
-// upload total da tela.
+// "1080p30, 4,2 Mbps": a melhor qualidade que está saindo e o upload total
+// da tela. Sem ninguém assistindo, só a qualidade escolhida.
 function updateShareLabel() {
   if (!state.screen) return;
   let best = Infinity;
@@ -1021,8 +1021,8 @@ function updateShareLabel() {
     best = Math.min(best, adaptOf(sender).level);
   }
   setScreenLabel(state.myId, Number.isFinite(best)
-    ? `Sua tela · ${ladderStep(best).label}, ${mbps(total)} Mbps`
-    : 'Sua tela');
+    ? `${ladderStep(best).label}, ${mbps(total)} Mbps`
+    : ladderStep(0).label);
 }
 
 // ---------- Ajuste automático da tela ----------
