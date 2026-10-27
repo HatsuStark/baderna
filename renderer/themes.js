@@ -423,6 +423,277 @@ const THEMES = {
       <ellipse cx="380" cy="880" rx="200" ry="30" fill="#000" opacity=".5"/>
       ${GRAIN}`,
   },
+
+  cinema: {
+    name: 'Cine Baderna',
+    bg: '#12060a',
+    svg: () => {
+      let seats = '';
+      for (let row = 0; row < 3; row++) {
+        const y = 690 + row * 70;
+        const w = 120 + row * 16;
+        for (let x = -40 + (row % 2) * (w / 2); x < 1480; x += w + 10) {
+          seats += `<path d="M${x} ${y + 90} V${y + 18} Q${x} ${y} ${x + 18} ${y} H${x + w - 18} Q${x + w} ${y} ${x + w} ${y + 18} V${y + 90} Z" fill="${row ? '#2a0d14' : '#3a111b'}"/>`;
+        }
+      }
+      const curtain = (x, dir) => {
+        let folds = '';
+        for (let i = 0; i < 6; i++) {
+          const fx = x + dir * i * 34;
+          folds += `<path d="M${fx} 0 Q${fx + dir * 20} 450 ${fx - dir * 6} 900" stroke="#4a0b16" stroke-width="10" fill="none" opacity=".7"/>`;
+        }
+        return `<path d="M${x} 0 H${x + dir * 230} Q${x + dir * 150} 420 ${x + dir * 200} 900 H${x} Z" fill="#7a1022"/>${folds}`;
+      };
+      return `
+        <defs>
+          <linearGradient id="th-cine-beam" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#fff6d6" stop-opacity=".22"/><stop offset="1" stop-color="#fff6d6" stop-opacity="0"/></linearGradient>
+        </defs>
+        <rect width="1440" height="900" fill="#12060a"/>
+        <rect x="290" y="70" width="860" height="420" rx="10" fill="#1d2433" opacity=".9"/>
+        <rect x="290" y="70" width="860" height="420" rx="10" fill="#9ad7ff" opacity=".12" filter="url(#th-soft)"/>
+        <polygon points="700,900 740,900 1150,70 290,70" fill="url(#th-cine-beam)"/>
+        ${CENTER_SHADE}
+        ${curtain(0, 1)}${curtain(1440, -1)}
+        <rect x="0" y="0" width="1440" height="40" fill="#5a0c1a"/>
+        <path d="M0 40 ${Array.from({ length: 37 }, (_, i) => `Q${i * 40 + 20} 64 ${i * 40 + 40} 40`).join(' ')}" fill="#5a0c1a"/>
+        <g transform="translate(720 30)">
+          <rect x="-190" y="-2" width="380" height="54" rx="6" fill="#1a0a0d" stroke="#ffb627" stroke-width="2"/>
+          ${Array.from({ length: 18 }, (_, i) => `<circle cx="${-180 + i * 21.2}" cy="2" r="3" fill="#ffd36b" filter="url(#th-glow)"/><circle cx="${-180 + i * 21.2}" cy="48" r="3" fill="#ffd36b" filter="url(#th-glow)"/>`).join('')}
+          <text y="33" text-anchor="middle" font-family="Chakra Petch" font-weight="700" font-size="20" fill="#ffd36b" letter-spacing="3">SESSÃO DA MADRUGADA</text>
+        </g>
+        ${seats}
+        ${GRAIN}`;
+    },
+  },
+
+  boteco: {
+    name: 'Boteco do Jorge',
+    bg: '#0d1712',
+    svg: () => `
+      <defs>
+        <pattern id="th-azulejo" width="60" height="60" patternUnits="userSpaceOnUse">
+          <rect width="60" height="60" fill="#dfe9e1"/>
+          <rect x="1" y="1" width="58" height="58" fill="none" stroke="#b9c9bd" stroke-width="2"/>
+          <path d="M30 10 L50 30 L30 50 L10 30 Z" fill="#2f7a55" opacity=".55"/>
+          <circle cx="30" cy="30" r="5" fill="#dfe9e1"/>
+        </pattern>
+      </defs>
+      <rect width="1440" height="560" fill="url(#th-azulejo)"/>
+      <rect width="1440" height="560" fill="#04110a" opacity=".72"/>
+      <rect y="560" width="1440" height="340" fill="#3b2516"/>
+      <rect y="560" width="1440" height="16" fill="#5b3a22"/>
+      <g transform="translate(1040 90)">
+        <rect width="300" height="190" rx="10" fill="#111" stroke="#2b2b2b" stroke-width="8"/>
+        <rect x="14" y="14" width="272" height="162" fill="#1f8a43"/>
+        <path d="M150 14 V176 M14 95 H286" stroke="#fff" stroke-width="2" opacity=".6"/>
+        <circle cx="150" cy="95" r="28" fill="none" stroke="#fff" stroke-width="2" opacity=".6"/>
+        <rect x="20" y="20" width="96" height="22" fill="#000" opacity=".7"/>
+        <text x="68" y="36" text-anchor="middle" font-family="Chakra Petch" font-weight="700" font-size="13" fill="#ffb627">FLA 0 × 0 SPI</text>
+        <rect x="145" y="190" width="10" height="40" fill="#222"/>
+      </g>
+      <g transform="translate(90 120)">
+        <rect width="360" height="12" y="120" fill="#5b3a22"/>
+        <rect width="360" height="12" y="240" fill="#5b3a22"/>
+        ${[[20, '#2f9e44'], [70, '#c9a227'], [120, '#7a1430'], [170, '#e8590c'], [220, '#1c7ed6'], [270, '#2f9e44'], [320, '#c9a227']]
+          .map(([x, c], i) => `<rect x="${x}" y="${50 + (i % 2) * 10}" width="26" height="${70 - (i % 2) * 10}" rx="6" fill="${c}" opacity=".8"/><rect x="${x + 9}" y="${34 + (i % 2) * 10}" width="8" height="20" fill="${c}" opacity=".8"/>`).join('')}
+        ${[[40, '#f8f9fa'], [110, '#ffd43b'], [180, '#f8f9fa'], [250, '#ffd43b']]
+          .map(([x, c]) => `<rect x="${x}" y="190" width="40" height="50" rx="4" fill="${c}" opacity=".55"/>`).join('')}
+      </g>
+      <g transform="translate(720 0)">
+        <path d="M0 0 V70" stroke="#222" stroke-width="3"/>
+        <circle cy="84" r="16" fill="#ffe8a3" filter="url(#th-glow)"/>
+        <ellipse cy="420" rx="520" ry="380" fill="#ffd36b" opacity=".07" filter="url(#th-soft)"/>
+      </g>
+      ${CENTER_SHADE}
+      <g transform="rotate(-3 1190 360)">
+        <rect x="1030" y="320" width="320" height="70" fill="#f1e3c6"/>
+        <text x="1190" y="366" text-anchor="middle" font-family="Permanent Marker" font-size="28" fill="#c92a2a">FIADO SÓ AMANHÃ</text>
+      </g>
+      ${GRAIN}`,
+  },
+
+  varzea: {
+    name: 'Várzea',
+    bg: '#1a0f1d',
+    svg: () => {
+      const rnd = seeded(23);
+      let houses = '';
+      for (let x = -20; x < 1460; x += 50 + rnd() * 40) {
+        const h = 50 + rnd() * 90;
+        const y = 470 - h - Math.sin(x / 230) * 40;
+        const w = 46 + rnd() * 30;
+        houses += `<rect x="${x}" y="${y}" width="${w}" height="${520 - y}" fill="${rnd() < 0.5 ? '#2a1830' : '#33203a'}"/>`;
+        if (rnd() < 0.6) houses += `<rect x="${x + 10}" y="${y + 14}" width="10" height="12" fill="#ffd36b" opacity="${0.5 + rnd() * 0.4}"/>`;
+      }
+      return `
+        <defs>
+          <linearGradient id="th-varzea-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b1640"/><stop offset=".55" stop-color="#d9480f"/><stop offset="1" stop-color="#ffb627"/></linearGradient>
+        </defs>
+        <rect width="1440" height="560" fill="url(#th-varzea-sky)"/>
+        <circle cx="1080" cy="430" r="90" fill="#ffd36b" opacity=".85"/>
+        ${houses}
+        <path d="M0 150 Q360 210 720 160 T1440 170 M0 175 Q360 235 720 185 T1440 195" stroke="#120a14" stroke-width="2" fill="none"/>
+        <rect x="200" y="60" width="10" height="500" fill="#120a14"/><rect x="1220" y="70" width="10" height="490" fill="#120a14"/>
+        <g transform="translate(420 120) rotate(18)">
+          <path d="M0 0 L36 -40 L72 0 L36 50 Z" fill="#ff2bd6"/><path d="M36 -40 V50 M0 0 H72" stroke="#120a14" stroke-width="2"/>
+          <path d="M36 50 Q20 120 60 190" stroke="#120a14" stroke-width="1.5" fill="none"/>
+        </g>
+        <rect y="520" width="1440" height="380" fill="#8a5a2b"/>
+        <rect y="520" width="1440" height="380" fill="#000" opacity=".28"/>
+        ${Array.from({ length: 40 }, () => `<ellipse cx="${rnd() * 1440}" cy="${560 + rnd() * 330}" rx="${8 + rnd() * 20}" ry="${2 + rnd() * 4}" fill="#5c3a1b" opacity=".6"/>`).join('')}
+        <g fill="none" stroke="#f1e3c6" stroke-width="10" stroke-linejoin="round" opacity=".85">
+          <path d="M60 640 L64 470 L262 462 L270 645"/><path d="M1180 645 L1178 462 L1376 470 L1384 640"/>
+        </g>
+        <path d="M0 700 Q720 650 1440 700" stroke="#f1e3c6" stroke-width="4" fill="none" opacity=".35"/>
+        ${CENTER_SHADE}
+        ${tags([[90, 420, 34, '#f1e3c6', 0.22, -4, 'VÁRZEA FC · DESDE ONTEM']])}
+        ${GRAIN}`;
+    },
+  },
+
+  palco: {
+    name: 'Palco do Rock',
+    bg: '#08050c',
+    svg: () => {
+      const rnd = seeded(31);
+      let crowd = '';
+      for (let x = -20; x < 1460; x += 28 + rnd() * 12) {
+        const y = 820 + rnd() * 30;
+        crowd += `<circle cx="${x}" cy="${y}" r="16" fill="#050307"/><rect x="${x - 22}" y="${y + 12}" width="44" height="80" rx="14" fill="#050307"/>`;
+        if (rnd() < 0.35) crowd += `<path d="M${x + 10} ${y} L${x + 24} ${y - 70}" stroke="#050307" stroke-width="9" stroke-linecap="round"/><path d="M${x + 20} ${y - 70} l-4 -14 M${x + 28} ${y - 72} l4 -14" stroke="#050307" stroke-width="5" stroke-linecap="round"/>`;
+      }
+      const amp = (x) => `<g transform="translate(${x} 430)">${[0, 1, 2].map((i) => `
+        <rect y="${i * 72}" width="150" height="70" rx="4" fill="#141016" stroke="#2a2430" stroke-width="3"/>
+        <rect x="10" y="${i * 72 + 10}" width="130" height="50" fill="#221c26"/>`).join('')}
+        <text x="75" y="-8" text-anchor="middle" font-family="Chakra Petch" font-weight="700" font-size="14" fill="#c9a227">MARSHMALLOW</text></g>`;
+      const beam = (x, color, tilt) => `<polygon points="${x - 18},40 ${x + 18},40 ${x + tilt + 170},640 ${x + tilt - 170},640" fill="${color}" opacity=".13" filter="url(#th-soft)"/>
+        <circle cx="${x}" cy="40" r="16" fill="${color}" filter="url(#th-glow)"/>`;
+      return `
+        <rect width="1440" height="900" fill="#08050c"/>
+        <rect y="0" width="1440" height="26" fill="#1a1520"/>
+        ${beam(260, '#ff2bd6', 120)}${beam(560, '#19f0ff', 40)}${beam(880, '#b6ff3b', -40)}${beam(1180, '#ffb627', -120)}
+        <rect y="640" width="1440" height="40" fill="#1a1520"/><rect y="640" width="1440" height="4" fill="#3a3044"/>
+        ${amp(40)}${amp(1250)}
+        <g transform="translate(720 600)" fill="#120e16" stroke="#2a2430" stroke-width="3">
+          <ellipse cx="0" cy="0" rx="70" ry="40"/><ellipse cx="-110" cy="-20" rx="34" ry="14"/><ellipse cx="110" cy="-20" rx="34" ry="14"/>
+          <path d="M-110 -20 V40 M110 -20 V40" fill="none"/><ellipse cx="-160" cy="-70" rx="40" ry="6" stroke="#c9a227"/><ellipse cx="160" cy="-70" rx="40" ry="6" stroke="#c9a227"/>
+        </g>
+        ${CENTER_SHADE}
+        <g transform="translate(720 120)">
+          <rect x="-300" y="-46" width="600" height="80" fill="#120e16" stroke="#ff2bd6" stroke-width="2" opacity=".85"/>
+          <text y="12" text-anchor="middle" font-family="Permanent Marker" font-size="40" fill="#ff7ae6" filter="url(#th-glow)">FERRATICA WORLD TOUR</text>
+        </g>
+        ${crowd}
+        ${GRAIN}`;
+    },
+  },
+
+  espaco: {
+    name: 'Nave Baderna',
+    bg: '#03040c',
+    svg: () => {
+      const rnd = seeded(41);
+      let stars = '';
+      for (let i = 0; i < 220; i++) {
+        stars += `<circle cx="${rnd() * 1440}" cy="${rnd() * 640}" r="${rnd() * 1.8 + 0.3}" fill="#fff" opacity="${0.3 + rnd() * 0.7}"/>`;
+      }
+      return `
+        <defs>
+          <radialGradient id="th-planet" cx=".35" cy=".35"><stop offset="0" stop-color="#ff9a3c"/><stop offset=".7" stop-color="#b8326a"/><stop offset="1" stop-color="#3a0d3a"/></radialGradient>
+        </defs>
+        <rect width="1440" height="900" fill="#03040c"/>
+        <ellipse cx="400" cy="300" rx="420" ry="200" fill="#7048e8" opacity=".14" filter="url(#th-soft)"/>
+        <ellipse cx="1100" cy="200" rx="300" ry="150" fill="#19f0ff" opacity=".08" filter="url(#th-soft)"/>
+        ${stars}
+        <g transform="translate(1120 250)">
+          <circle r="110" fill="url(#th-planet)"/>
+          <ellipse rx="190" ry="34" fill="none" stroke="#ffd36b" stroke-width="10" opacity=".55" transform="rotate(-18)"/>
+        </g>
+        <g fill="#0b0f1c" stroke="#1f2a44" stroke-width="4">
+          <path d="M0 0 H1440 V70 Q720 20 0 70 Z"/>
+          <path d="M0 0 V640 Q60 360 70 0 Z"/><path d="M1440 0 V640 Q1380 360 1370 0 Z"/>
+          <rect y="600" width="1440" height="300"/>
+        </g>
+        <path d="M0 600 H1440" stroke="#19f0ff" stroke-width="3" opacity=".6" filter="url(#th-glow)"/>
+        ${Array.from({ length: 12 }, (_, i) => `<rect x="${60 + i * 116}" y="630" width="70" height="10" rx="3" fill="${['#19f0ff', '#ff2bd6', '#b6ff3b'][i % 3]}" opacity=".45"/>`).join('')}
+        ${CENTER_SHADE}
+        <g font-family="Chakra Petch" font-weight="700" fill="#19f0ff" opacity=".55">
+          <text x="110" y="130" font-size="16" letter-spacing="3">DESTINO: SEXTA À NOITE</text>
+          <text x="110" y="154" font-size="13" letter-spacing="2">COMBUSTÍVEL: REFRI E PIPOCA</text>
+        </g>
+        ${GRAIN}`;
+    },
+  },
+
+  dojo: {
+    name: 'Dojo',
+    bg: '#140a08',
+    svg: () => {
+      const rnd = seeded(53);
+      let petals = '';
+      for (let i = 0; i < 60; i++) {
+        const x = rnd() * 1440;
+        const y = rnd() * 560;
+        petals += `<ellipse cx="${x}" cy="${y}" rx="6" ry="3.5" fill="#ffb3c7" opacity="${0.4 + rnd() * 0.5}" transform="rotate(${rnd() * 180} ${x} ${y})"/>`;
+      }
+      let shoji = '';
+      for (let x = 0; x < 1440; x += 240) {
+        shoji += `<rect x="${x + 6}" y="0" width="228" height="560" fill="#e9dcc0" opacity=".13"/>`;
+        for (let gx = 1; gx < 4; gx++) shoji += `<path d="M${x + 6 + gx * 57} 0 V560" stroke="#3b2414" stroke-width="4"/>`;
+        for (let gy = 1; gy < 7; gy++) shoji += `<path d="M${x + 6} ${gy * 80} H${x + 234}" stroke="#3b2414" stroke-width="4"/>`;
+      }
+      return `
+        <rect width="1440" height="900" fill="#140a08"/>
+        <circle cx="720" cy="300" r="230" fill="#e03131" opacity=".5"/>
+        <circle cx="720" cy="300" r="300" fill="#e03131" opacity=".15" filter="url(#th-soft)"/>
+        ${shoji}
+        <path d="M0 0 H1440" stroke="#3b2414" stroke-width="30"/>
+        ${[0, 240, 480, 720, 960, 1200, 1440].map((x) => `<rect x="${x - 6}" y="0" width="12" height="560" fill="#2a170c"/>`).join('')}
+        <rect y="560" width="1440" height="340" fill="#6b5a2e"/>
+        ${Array.from({ length: 8 }, (_, i) => `<rect x="${i * 180}" y="560" width="180" height="340" fill="none" stroke="#3b3018" stroke-width="5"/>`).join('')}
+        <rect y="560" width="1440" height="340" fill="#000" opacity=".3"/>
+        ${petals}
+        ${CENTER_SHADE}
+        <g transform="translate(160 120)">
+          <rect x="-50" y="-20" width="100" height="300" fill="#f1e3c6" opacity=".85"/>
+          <text y="70" text-anchor="middle" font-size="72" fill="#1a1a1a" font-family="serif">道</text>
+          <text y="170" text-anchor="middle" font-size="72" fill="#1a1a1a" font-family="serif">場</text>
+          <circle cy="240" r="16" fill="#c92a2a"/>
+        </g>
+        ${GRAIN}`;
+    },
+  },
+
+  praia: {
+    name: 'Futevôlei na Praia',
+    bg: '#062033',
+    svg: () => `
+      <defs>
+        <linearGradient id="th-praia-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b3d63"/><stop offset="1" stop-color="#36a2c9"/></linearGradient>
+      </defs>
+      <rect width="1440" height="420" fill="url(#th-praia-sky)"/>
+      <circle cx="1180" cy="120" r="64" fill="#ffe08a" filter="url(#th-glow)"/>
+      <path d="M0 330 Q200 250 400 310 Q520 260 640 320 L640 420 L0 420 Z" fill="#164f3a" opacity=".8"/>
+      <rect y="400" width="1440" height="120" fill="#1772a3"/>
+      ${[430, 460, 490].map((y, i) => `<path d="M0 ${y} ${Array.from({ length: 24 }, (_, k) => `q30 -${6 + i * 2} 60 0`).join(' ')}" stroke="#bfe9ff" stroke-width="3" fill="none" opacity="${0.5 - i * 0.12}"/>`).join('')}
+      <rect y="515" width="1440" height="385" fill="#e9c98a"/>
+      <rect y="515" width="1440" height="385" fill="#000" opacity=".22"/>
+      <path d="M150 515 V720 M1290 515 V720" stroke="#f1e3c6" stroke-width="8"/>
+      <path d="M150 540 H1290" stroke="#f1e3c6" stroke-width="4"/>
+      <g stroke="#f1e3c6" stroke-width="1.5" opacity=".6">
+        ${Array.from({ length: 58 }, (_, i) => `<path d="M${150 + i * 20} 540 V600"/>`).join('')}
+        <path d="M150 570 H1290 M150 600 H1290"/>
+      </g>
+      <g transform="translate(1270 620)">
+        <path d="M0 0 L-6 260" stroke="#7a4a1f" stroke-width="8"/>
+        <path d="M-150 10 Q0 -90 150 10 Z" fill="#e03131"/>
+        <path d="M-150 10 Q-75 -60 0 -40 L0 -40 Q75 -60 150 10" fill="none" stroke="#f8f9fa" stroke-width="10" opacity=".8"/>
+      </g>
+      <circle cx="420" cy="230" r="22" fill="#ffd43b" stroke="#1b1b1b" stroke-width="3"/>
+      ${CENTER_SHADE}
+      ${tags([[90, 470, 36, '#fff', 0.25, -3, 'FUTEVÔLEI DO JORGE']])}
+      ${GRAIN}`,
+  },
 };
 
 const DEFAULT_THEME = 'arena';
