@@ -106,9 +106,10 @@ ipcMain.handle('screen-audio:stop', stopScreenAudio);
 app.on('before-quit', stopScreenAudio);
 
 app.whenReady().then(() => {
-  // Libera só mic/câmera, saída de som e captura de tela (a fonte é decidida
-  // no setDisplayMediaRequestHandler abaixo); nega o resto.
-  const allowed = new Set(['media', 'speaker-selection', 'display-capture']);
+  // Libera só mic/câmera, saída de som, captura de tela (a fonte é decidida
+  // no setDisplayMediaRequestHandler abaixo), tela cheia de elemento e
+  // escrita na área de transferência (copiar o código da sala); nega o resto.
+  const allowed = new Set(['media', 'speaker-selection', 'display-capture', 'fullscreen', 'clipboard-sanitized-write']);
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(allowed.has(permission));
   });

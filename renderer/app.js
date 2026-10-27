@@ -1532,7 +1532,10 @@ $('edit-avatar-lobby').addEventListener('click', openAvatarEditor);
 
 $('composer').addEventListener('submit', sendChat);
 $('room-chip').addEventListener('click', () => {
-  navigator.clipboard.writeText(state.room ?? '').then(() => addSystem('Código da sala copiado.'), () => {});
+  navigator.clipboard.writeText(state.room ?? '').then(
+    () => addSystem('Código da sala copiado.'),
+    (err) => addSystem(`Não deu pra copiar o código: ${err.message}`),
+  );
 });
 $('theme-chip').addEventListener('click', () => openSettings(true));
 
