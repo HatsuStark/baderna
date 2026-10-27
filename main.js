@@ -49,6 +49,9 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
+      // Minimizado (ex.: transmitindo um jogo), os timers do ajuste de tela,
+      // estatísticas e prêmios continuam no ritmo normal.
+      backgroundThrottling: false,
     },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));

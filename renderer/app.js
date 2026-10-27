@@ -969,7 +969,8 @@ function screenBitrate({ preset, codec, viewers, withAudio, budget }) {
 const mbps = (bps) => (bps / 1e6).toFixed(1).replace('.', ',');
 
 // Recalcula o bitrate de cada cópia da tela. Roda quando alguém começa a
-// receber ou para; assim quem entra/sai redistribui o upload.
+// receber ou para; assim quem entra/sai redistribui o upload. O degrau do
+// ajuste automático de cada pessoa é reaplicado em cima do bitrate base.
 async function retuneScreen() {
   const screen = state.screen;
   if (!screen) return;
@@ -978,8 +979,6 @@ async function retuneScreen() {
     .filter((pc) => pc?.connectionState === 'connected');
   const viewers = [...state.members.values()].filter((m) => m.screenOut).length;
   const budget = uploadBudgetBps();
-  const codecs = new Set();
-  let total = 0;
 
   for (const pc of pcs) {
     for (const sender of pc.getSenders()) {
@@ -992,11 +991,10 @@ async function retuneScreen() {
       }
       if (sender.track?.kind !== 'video') continue;
       const codec = params.codecs?.[0]?.mimeType.split('/')[1]?.toUpperCase() ?? 'VP8';
-      codecs.add(codec);
       const { perViewer } = screenBitrate({ preset: screen.preset, codec, viewers, withAudio: !!screen.audio, budget });
-      total += perViewer;
-      params.encodings[0].maxBitrate = perViewer;
-      params.encodings[0].maxFramerate = screen.preset.frameRate;
+      const a = adaptOf(sender);
+      a.base = perViewer;
+      applyAdaptLevel(params, a);
       params.degradationPreference = screen.mode === 'motion' ? 'maintain-framerate' : 'maintain-resolution';
       try {
         await sender.setParameters(params);
@@ -1006,12 +1004,141 @@ async function retuneScreen() {
       }
     }
   }
+  if (state.screen === screen) updateShareLabel();
+}
 
-  if (state.screen !== screen) return;
-  const info = pcs.length
-    ? ` · ${[...codecs].join('/')} · ${pcs.length} × ${mbps(total / pcs.length)} Mbps = ${mbps(total)} Mbps`
-    : '';
-  setScreenLabel(state.myId, `Sua tela${info}`);
+// "Sua tela · H265 · Bia 1080p60 · Caio 720p30 · 9,4 Mbps"
+function updateShareLabel() {
+  if (!state.screen) return;
+  const parts = [];
+  const codecs = new Set();
+  let total = 0;
+  for (const m of state.members.values()) {
+    const pc = m.screenOut?.peerConnection;
+    const sender = pc?.getSenders().find((x) => x.track?.kind === 'video');
+    if (!sender || pc.connectionState !== 'connected') continue;
+    const params = sender.getParameters();
+    codecs.add(params.codecs?.[0]?.mimeType.split('/')[1]?.toUpperCase() ?? '?');
+    total += params.encodings?.[0]?.maxBitrate ?? 0;
+    parts.push(`${m.name} ${ladderStep(adaptOf(sender).level).label}`);
+  }
+  setScreenLabel(state.myId, parts.length
+    ? `Sua tela · ${[...codecs].join('/')} · ${parts.join(' · ')} · ${mbps(total)} Mbps`
+    : 'Sua tela');
+}
+
+// ---------- Ajuste automático da tela ----------
+// Cada pessoa assistindo tem um degrau de qualidade. A cada 2 s olha as
+// estatísticas da cópia que vai pra ela: limitada por banda ou CPU por 6 s,
+// desce um degrau; folgada por um bom tempo, sobe. Filme perde resolução
+// primeiro (mantém a fluidez); texto perde fps primeiro (mantém a nitidez).
+// Upload apertado limita todas as cópias, então todas descem juntas;
+// download ruim de um amigo só derruba a cópia dele.
+
+const ADAPT_INTERVAL_MS = 2000;
+const ADAPT_DOWN_AFTER = 3;       // amostras limitadas seguidas pra descer
+const ADAPT_UP_AFTER = 8;         // amostras folgadas seguidas pra subir
+const ADAPT_UP_HOLD_MS = 30_000;  // espera depois de descer; dobra a cada ida e volta
+const ADAPT_LADDERS = {
+  motion: [{ scale: 1 }, { scale: 1.5 }, { scale: 2, fps: 30 }, { scale: 3, fps: 24 }],
+  detail: [{ scale: 1 }, { scale: 1, fps: 15 }, { scale: 1.5, fps: 10 }, { scale: 2, fps: 8 }],
+};
+
+const screenAdapt = new WeakMap(); // RTCRtpSender -> { level, base, bad, good, lastDown, bounces }
+
+function adaptOf(sender) {
+  let a = screenAdapt.get(sender);
+  if (!a) {
+    a = { level: 0, base: 0, bad: 0, good: 0, lastDown: 0, bounces: 0 };
+    screenAdapt.set(sender, a);
+  }
+  return a;
+}
+
+function adaptLadder() {
+  return ADAPT_LADDERS[state.screen?.mode === 'detail' ? 'detail' : 'motion'];
+}
+
+function ladderStep(level) {
+  const { preset } = state.screen;
+  const step = adaptLadder()[level];
+  const fps = Math.min(preset.frameRate, step.fps ?? preset.frameRate);
+  // Bitrate cresce menos que linear com pixels e fps.
+  const factor = Math.max(0.15, (1 / step.scale ** 2) ** 0.75 * (fps / preset.frameRate) ** 0.7);
+  return { scale: step.scale, fps, factor, label: `${Math.round(preset.height / step.scale)}p${fps}` };
+}
+
+function applyAdaptLevel(params, a) {
+  const step = ladderStep(a.level);
+  const enc = params.encodings[0];
+  enc.scaleResolutionDownBy = step.scale;
+  enc.maxFramerate = step.fps;
+  enc.maxBitrate = Math.max(MIN_SCREEN_BITRATE, Math.round(a.base * step.factor));
+}
+
+async function adaptScreen() {
+  const screen = state.screen;
+  if (!screen) return;
+  const now = Date.now();
+  const top = adaptLadder().length - 1;
+  let changed = false;
+  for (const m of state.members.values()) {
+    const pc = m.screenOut?.peerConnection;
+    if (pc?.connectionState !== 'connected') continue;
+    const sender = pc.getSenders().find((x) => x.track?.kind === 'video');
+    if (!sender) continue;
+    const a = adaptOf(sender);
+    if (!a.base) continue; // retuneScreen ainda não passou por aqui
+    const stats = await screenSenderStats(sender);
+    if (state.screen !== screen) return;
+    if (!stats) continue;
+    if (stats.limited) {
+      a.bad++;
+      a.good = 0;
+    } else {
+      a.good++;
+      a.bad = 0;
+    }
+
+    if (a.bad >= ADAPT_DOWN_AFTER && a.level < top) {
+      a.level++;
+      a.bad = 0;
+      a.lastDown = now;
+      addSystem(`A tela pra ${m.name} baixou pra ${ladderStep(a.level).label}: a conexão não estava aguentando.`);
+    } else if (a.good >= ADAPT_UP_AFTER && a.level > 0 && now - a.lastDown > ADAPT_UP_HOLD_MS * 2 ** a.bounces) {
+      const up = ladderStep(a.level - 1);
+      // Só sobe se a estimativa de banda da conexão comporta o degrau de cima.
+      if (stats.available && stats.available < a.base * up.factor * 1.2) continue;
+      a.level--;
+      a.good = 0;
+      if (a.lastDown) a.bounces = Math.min(4, a.bounces + 1);
+      if (a.level === 0) addSystem(`A tela pra ${m.name} voltou pra ${up.label}.`);
+    } else {
+      continue;
+    }
+    const params = sender.getParameters();
+    if (!params.encodings?.length) continue;
+    applyAdaptLevel(params, a);
+    await sender.setParameters(params).catch((err) => console.warn('adapt setParameters', err));
+    changed = true;
+  }
+  if (changed && state.screen === screen) updateShareLabel();
+}
+
+// O que o ajuste olha numa cópia da tela. Função separada pra dar pra
+// simular conexão ruim nos testes.
+async function screenSenderStats(sender) {
+  const report = await sender.getStats().catch(() => null);
+  if (!report) return null;
+  let out = null;
+  let available = 0;
+  report.forEach((r) => {
+    if (r.type === 'outbound-rtp' && r.kind === 'video') out = r;
+    if (r.type === 'candidate-pair' && r.nominated && r.availableOutgoingBitrate) available = r.availableOutgoingBitrate;
+  });
+  if (!out) return null;
+  const reason = out.qualityLimitationReason;
+  return { limited: reason === 'bandwidth' || reason === 'cpu', reason, available };
 }
 
 function updateShareEstimate() {
@@ -1030,7 +1157,8 @@ function updateShareEstimate() {
   $('share-estimate').textContent =
     `${viewers} assistindo × ${mbps(perViewer)} Mbps ≈ ${mbps(total)} Mbps de upload · codec ${codec}`
     + (budget ? ` · limite ${mbps(budget * UPLOAD_HEADROOM)} de ${budgetMbps} Mbps` : ' · sem limite')
-    + (limited ? ' · qualidade reduzida pelo limite' : '');
+    + (limited ? ' · qualidade reduzida pelo limite' : '')
+    + '. Se a internet apertar, o app baixa a qualidade sozinho pra quem precisar.';
 }
 
 // Separado do seletor pra dar pra testar com qualquer stream de vídeo.
@@ -1052,7 +1180,7 @@ async function beginShare(stream, presetKey, mode, audio = null) {
   // Usuário pode parar pelo próprio sistema (ou a janela fechar).
   track.addEventListener('ended', stopShare);
 
-  state.screen = { stream, preset, mode, audio, codecs };
+  state.screen = { stream, preset, mode, audio, codecs, adaptTimer: setInterval(adaptScreen, ADAPT_INTERVAL_MS) };
   for (const m of state.members.values()) sendScreenTo(m);
   registerScreen(state.myId, 'Sua tela', stream, false);
   addSystem('Você começou a compartilhar a tela.');
@@ -1062,7 +1190,8 @@ async function beginShare(stream, presetKey, mode, audio = null) {
 
 function stopShare() {
   if (!state.screen) return;
-  const { stream, audio } = state.screen;
+  const { stream, audio, adaptTimer } = state.screen;
+  clearInterval(adaptTimer);
   state.screen = null;
   audio?.stop();
   stream.getTracks().forEach((t) => t.stop());
