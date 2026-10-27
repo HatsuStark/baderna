@@ -223,6 +223,7 @@ ipcMain.handle('update:status', () => updateReady);
 // direta é bloqueada (CGNAT/NAT simétrico, comum entre operadoras). O TURN
 // padrão do PeerJS saiu do ar, então o app usa o de turn.json (fora do git,
 // vai junto no instalador), num destes formatos:
+//   { "cloudflare": { "keyId": "...", "apiToken": "..." } }    credenciais de 24 h pela API da Cloudflare
 //   { "metered": { "app": "nome-do-app", "apiKey": "..." } }  credenciais pela API da Metered
 //   { "iceServers": [{ "urls": "turn:...", "username": "...", "credential": "..." }] }
 // Sem turn.json, só STUN: funciona entre redes abertas.
@@ -249,6 +250,21 @@ async function turnServers() {
   const cfg = readTurnConfig();
   if (!cfg) return [];
   if (cfg.iceServers) return validIceServers(cfg.iceServers);
+  if (cfg.cloudflare?.keyId && cfg.cloudflare?.apiToken) {
+    // Credenciais temporárias (24 h) geradas pela API da Cloudflare a cada uso.
+    const keyId = encodeURIComponent(String(cfg.cloudflare.keyId));
+    const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${keyId}/credentials/generate-ice-servers`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${cfg.cloudflare.apiToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ ttl: 86400 }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`Cloudflare respondeu ${res.status}`);
+    const data = await res.json();
+    return validIceServers([].concat(data.iceServers ?? []))
+      .map((s) => ({ ...s, urls: [].concat(s.urls).filter((u) => /^turns?:/.test(u)) }))
+      .filter((s) => s.urls.length);
+  }
   if (cfg.metered?.app && cfg.metered?.apiKey) {
     const appName = String(cfg.metered.app).replace(/[^\w-]/g, '');
     const url = `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(cfg.metered.apiKey)}`;
