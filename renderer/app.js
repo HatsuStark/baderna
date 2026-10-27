@@ -277,7 +277,8 @@ async function teardown() {
   });
   $('seats').replaceChildren();
   $('timeline').replaceChildren();
-  $('live-chips').replaceChildren();
+  $('live-list').replaceChildren();
+  updateLiveRail();
   applyTheme(DEFAULT_THEME);
 }
 
@@ -1264,11 +1265,11 @@ function registerScreen(id, label, stream, audible) {
   }
   Object.assign(s, { stream, label, audible });
   s.video.srcObject = stream;
-  s.card?.classList.add('ended');
-  s.card = createScreenCard(id, label, stream);
-  appendTimeline(s.card.closest('.msg'));
-  state.lastChat = null;
-  updateLiveChips();
+  const card = createScreenCard(id, label, stream);
+  if (s.card) s.card.replaceWith(card);
+  else $('live-list').append(card);
+  s.card = card;
+  updateLiveRail();
   if (state.watching === id) watch(id);
 }
 
@@ -1278,34 +1279,17 @@ function unregisterScreen(id) {
   if (state.watching === id) closeWatch();
   state.screens.delete(id);
   s.video.srcObject = null;
-  if (s.card) {
-    s.card.classList.add('ended');
-    s.card.querySelector('.shot').replaceChildren();
-    s.card.querySelector('button').disabled = true;
-  }
-  updateLiveChips();
+  s.card?.remove();
+  updateLiveRail();
 }
 
+// Card da transmissão na coluna "AO VIVO" (canto esquerdo). Duplo clique
+// abre no modo janela; se já estiver aberta, vai pra tela cheia.
 function createScreenCard(id, label, stream) {
-  const wrap = document.createElement('div');
-  wrap.className = 'msg';
-  const av = document.createElement('div');
-  av.className = 'av';
-  const avatar = id === state.myId ? state.avatar : state.members.get(id)?.avatar;
-  av.innerHTML = avatarFaceSvg(avatar);
-  const body = document.createElement('div');
-  body.className = 'body';
-  const who = document.createElement('div');
-  who.className = 'who';
-  const b = document.createElement('b');
-  b.textContent = id === state.myId ? state.name : state.members.get(id)?.name ?? '…';
-  b.style.color = nameColor(id);
-  const time = document.createElement('time');
-  time.textContent = 'ao vivo';
-  who.append(b, time);
-
   const card = document.createElement('div');
-  card.className = 'card';
+  card.className = 'live-card';
+  card.dataset.id = id;
+  card.title = 'Clique duas vezes pra assistir';
   const shot = document.createElement('div');
   shot.className = 'shot';
   const thumb = document.createElement('video');
@@ -1313,20 +1297,35 @@ function createScreenCard(id, label, stream) {
   thumb.muted = true;
   thumb.playsInline = true;
   thumb.srcObject = stream;
-  shot.append(thumb);
+  const dot = document.createElement('i');
+  dot.className = 'live-dot';
+  dot.textContent = 'AO VIVO';
+  shot.append(thumb, dot);
   const meta = document.createElement('div');
   meta.className = 'meta';
+  const face = document.createElement('div');
+  face.className = 'av';
+  face.innerHTML = avatarFaceSvg(id === state.myId ? state.avatar : state.members.get(id)?.avatar); // sanitizado
+  const text = document.createElement('div');
+  const b = document.createElement('b');
+  b.textContent = id === state.myId ? 'Você' : state.members.get(id)?.name ?? '…';
+  b.style.color = nameColor(id);
   const span = document.createElement('span');
   span.textContent = label;
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.textContent = id === state.myId ? 'Ver prévia ⤢' : 'Assistir ⤢';
-  btn.addEventListener('click', () => watch(id));
-  meta.append(span, btn);
+  text.append(b, span);
+  meta.append(face, text);
   card.append(shot, meta);
-  body.append(who, card);
-  wrap.append(av, body);
+  card.addEventListener('dblclick', () => {
+    if (state.watching === id && !document.fullscreenElement) toggleFullscreen();
+    else watch(id);
+  });
   return card;
+}
+
+function updateLiveRail() {
+  $('live-rail').hidden = state.screens.size === 0;
+  $('room-view').querySelector('.center').classList.toggle('has-live', state.screens.size > 0);
+  for (const card of $('live-list').children) card.classList.toggle('watching', card.dataset.id === state.watching);
 }
 
 function watch(id) {
@@ -1341,6 +1340,7 @@ function watch(id) {
   $('screen-label').textContent = s.label;
   $('screen-volume').parentElement.hidden = !s.audible;
   $('screen-view').hidden = false;
+  updateLiveRail();
 }
 
 function applyScreenAudio(s) {
@@ -1386,6 +1386,7 @@ function closeWatch() {
   state.watching = null;
   $('screen-box').replaceChildren();
   $('screen-view').hidden = true;
+  updateLiveRail();
 }
 
 function setScreenLabel(id, label) {
@@ -1399,19 +1400,6 @@ function setScreenLabel(id, label) {
 function toggleFullscreen() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   else $('screen-view').requestFullscreen().catch((err) => console.warn('fullscreen', err));
-}
-
-function updateLiveChips() {
-  const chips = [];
-  for (const id of state.screens.keys()) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'chip live';
-    btn.textContent = id === state.myId ? 'você ao vivo' : `${state.members.get(id)?.name ?? '…'} ao vivo`;
-    btn.addEventListener('click', () => watch(id));
-    chips.push(btn);
-  }
-  $('live-chips').replaceChildren(...chips);
 }
 
 // ---------- Microfone / fone ----------
@@ -1838,6 +1826,12 @@ function renderSeat(m) {
     id: m.id, name: m.name, avatar: m.avatar, host: m.id === state.hostId,
     muted: m.muted, deaf: m.deaf, sharing: !!m.screenIn, silenced: personPref(m.name).mute,
   });
+  // Nome e rosto podem chegar depois da transmissão: atualiza o card dela.
+  const card = state.screens.get(m.id)?.card;
+  if (card) {
+    card.querySelector('.meta b').textContent = m.name;
+    card.querySelector('.av').innerHTML = avatarFaceSvg(m.avatar); // sanitizado
+  }
 }
 
 function renderSelf() {

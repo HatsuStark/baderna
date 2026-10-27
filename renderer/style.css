@@ -161,11 +161,6 @@ label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); fo
 }
 .chip b { color: var(--cyan); font-weight: 600; }
 button.chip:disabled { opacity: 1; }
-.chip.live { color: var(--red); border-color: rgba(255, 59, 92, .45); }
-.chip.live::before {
-  content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px;
-  background: var(--red); box-shadow: 0 0 8px var(--red); vertical-align: 1px;
-}
 
 .center { flex: 1; min-height: 0; position: relative; display: flex; justify-content: center; }
 
@@ -550,3 +545,35 @@ label.check input { width: auto; }
 /* Galera escondida: a setinha pra trazer de volta some junto com os controles. */
 #screen-seats-toggle { transition: opacity .25s; }
 .screen-view:fullscreen.hide-seats:not(.controls) #screen-seats-toggle { opacity: 0; pointer-events: none; }
+
+/* ---------- Coluna AO VIVO (transmissões, canto esquerdo) ---------- */
+.live-rail {
+  position: absolute; left: 24px; top: 8px; bottom: 8px; width: 220px; z-index: 4;
+  display: flex; flex-direction: column; gap: 8px; min-height: 0;
+}
+.live-rail[hidden] { display: none; }
+.live-rail h3 { margin: 0; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--red); }
+.live-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 0; padding-right: 4px; }
+.live-card {
+  border-radius: 12px; overflow: hidden; cursor: pointer; user-select: none; flex: none;
+  background: var(--panel-solid); border: 1px solid var(--line); transition: border-color .15s, box-shadow .15s;
+}
+.live-card:hover { border-color: rgba(25, 240, 255, .5); }
+.live-card.watching { border-color: var(--cyan); box-shadow: 0 0 14px rgba(25, 240, 255, .35); }
+.live-card .shot { position: relative; aspect-ratio: 16 / 9; background: #000; }
+.live-card .shot video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.live-dot {
+  position: absolute; top: 6px; left: 6px; padding: 1px 6px; border-radius: 4px; font-style: normal;
+  font-size: 10px; font-weight: 700; letter-spacing: .08em; background: var(--red); color: #fff;
+}
+.live-card .meta { display: flex; align-items: center; gap: 8px; padding: 6px 8px; }
+.live-card .av { width: 28px; height: 28px; flex: none; border-radius: 8px; overflow: hidden; background: #23232b; }
+.live-card .av svg { width: 100%; height: 100%; display: block; }
+.live-card .meta div:last-child { display: flex; flex-direction: column; min-width: 0; }
+.live-card .meta b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-card .meta span { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Com transmissão: chat e player andam pra direita da coluna. */
+.center.has-live .timeline { margin-left: 264px; width: min(860px, calc(100% - 288px)); }
+.center.has-live .screen-view:not(:fullscreen) { left: 264px; }
+.live-list::-webkit-scrollbar { width: 6px; }
+.live-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .12); border-radius: 3px; }

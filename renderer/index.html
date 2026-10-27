@@ -58,13 +58,16 @@
         <button id="save-chip" class="chip" type="button" title="Salvar esta sala"></button>
         <button id="room-chip" class="chip" type="button" title="Copiar código">sala <b id="room-code"></b></button>
         <span id="count-chip" class="chip"></span>
-        <span id="live-chips" class="chips"></span>
         <button id="movies-chip" class="chip" type="button" title="Filmes que a galera já viu">🎬 filmes <b id="movies-count"></b></button>
         <button id="theme-chip" class="chip" type="button">tema <b id="theme-name"></b></button>
       </div>
     </header>
 
     <main class="center">
+      <aside id="live-rail" class="live-rail" hidden>
+        <h3>Ao vivo</h3>
+        <div id="live-list" class="live-list"></div>
+      </aside>
       <div id="timeline" class="timeline"></div>
       <section id="screen-view" class="screen-view" hidden>
         <div class="screen-bar">
