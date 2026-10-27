@@ -11,7 +11,8 @@ const AVATAR_PALETTE = [
   '#7048e8', '#364fc7', '#2f9e44', '#f8f9fa', '#495057', '#212529',
 ];
 
-// Camisas que lembram os times pelas cores e listras, sem escudo nem nome.
+// Camisas que lembram times, bandas, games, animes e filmes só pelas cores e
+// pelo corte: sem escudo, logo, nome nem personagem desenhado.
 // main: cor principal (usada nas cadeiras); swatch: CSS do botão no editor;
 // draw(a, t): listras dentro do recorte do tronco; t = altura do ombro, pra
 // gola acompanhar o tipo de corpo. A área cobre o tronco mais largo.
@@ -19,6 +20,27 @@ const KIT_AREA = '<rect x="0" y="80" width="160" height="100" fill="FILL"/>';
 const area = (fill) => KIT_AREA.replace('FILL', fill);
 const range = (from, to, step) => Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
 const vCollar = (t) => `<path d="M66 ${t} L80 ${t + 16} L94 ${t}" fill="none" stroke="#f8f9fa" stroke-width="4"/>`;
+const vBars = (from, to, step, w, fill, op = 1) => range(from, to, step)
+  .map((x) => `<rect x="${x}" y="80" width="${w}" height="100" fill="${fill}" opacity="${op}"/>`).join('');
+const hBars = (from, to, step, h, fill, op = 1) => range(from, to, step)
+  .map((y) => `<rect x="0" y="${y}" width="160" height="${h}" fill="${fill}" opacity="${op}"/>`).join('');
+const flames = (y, fill) => `<path d="M0 180 V${y + 8} ${range(0, 144, 16).map((x, i) =>
+  `Q${x + 4} ${y - 6 - (i % 2) * 8} ${x + 8} ${y + 4} Q${x + 12} ${y - 4} ${x + 16} ${y + 8}`).join(' ')} V180 Z" fill="${fill}"/>`;
+const sparkle = (x, y, r, fill) =>
+  `<path d="M${x} ${y - r} Q${x} ${y} ${x + r} ${y} Q${x} ${y} ${x} ${y + r} Q${x} ${y} ${x - r} ${y} Q${x} ${y} ${x} ${y - r} Z" fill="${fill}"/>`;
+const pixelRows = (rows, x, y, s, fill) => rows.flatMap((row, j) => [...row].map((c, i) =>
+  c === 'X' ? `<rect x="${x + i * s}" y="${y + j * s}" width="${s}" height="${s}" fill="${fill}"/>` : '')).join('');
+const HEART_ROWS = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
+function spiderWeb(cx, cy) {
+  const angles = range(0, 330, 30).map((d) => d * Math.PI / 180);
+  const pt = (r, ang) => `${(cx + r * Math.cos(ang)).toFixed(1)} ${(cy + r * Math.sin(ang)).toFixed(1)}`;
+  const spokes = angles.map((ang) => `M${cx} ${cy} L${pt(120, ang)}`).join(' ');
+  const rings = [14, 28, 44, 62, 82].map((r) => angles.map((ang, i) => {
+    const next = i === angles.length - 1 ? 2 * Math.PI : angles[i + 1];
+    return `${i ? '' : `M${pt(r, ang)} `}Q${pt(r * 0.82, (ang + next) / 2)} ${pt(r, next)}`;
+  }).join(' ')).join(' ');
+  return `<path d="${spokes} ${rings}" fill="none" stroke="${INK}" stroke-width="1.3"/>`;
+}
 
 const KITS = {
   'lisa': { main: null, swatch: 'linear-gradient(135deg, #ff2bd6, #19f0ff)', draw: (a) => area(a.shirt) },
@@ -112,6 +134,238 @@ const KITS = {
     main: '#d1001f', swatch: 'linear-gradient(135deg, #f8f9fa 0 40%, #d1001f 40% 60%, #f8f9fa 60%)',
     draw: (a, t) => area('#f8f9fa') + `<path d="M30 ${t - 4} L56 ${t - 4} L140 ${t + 52} L140 180 L110 180 Z" fill="#d1001f"/>`,
   },
+
+  // Bandas: o estilo de cada gênero, sem logo nem nome de banda.
+  'rock clássico': {
+    main: '#16141a', swatch: 'linear-gradient(#16141a 0 55%, #ff6b00 55% 80%, #ffd43b 80%)',
+    draw: () => area('#16141a') + flames(126, '#ff6b00') + flames(138, '#ffd43b'),
+  },
+  'metal': {
+    main: '#111', swatch: 'linear-gradient(#e9ecef 0 18%, #111 18% 82%, #e9ecef 82%)',
+    draw: (a, t) => area('#111') + range(0, 150, 10).map((x) =>
+      `<path d="M${x} ${t - 2} l5 14 l5 -14 Z M${x} 152 l5 -14 l5 14 Z" fill="#e9ecef"/>`).join(''),
+  },
+  'punk': {
+    main: '#c1121f',
+    swatch: 'repeating-linear-gradient(0deg, rgba(0,0,0,.45) 0 4px, transparent 4px 12px), repeating-linear-gradient(90deg, #c1121f 0 8px, #111 8px 11px)',
+    draw: () => area('#c1121f') + vBars(6, 146, 20, 6, '#111', 0.7) + hBars(84, 176, 20, 6, '#111', 0.55)
+      + vBars(16, 156, 20, 1.5, '#ffd43b') + hBars(94, 176, 20, 1.5, '#ffd43b'),
+  },
+  'raio': {
+    main: '#16141a', swatch: 'linear-gradient(135deg, #16141a 0 40%, #ff3b5c 40% 55%, #19f0ff 55% 62%, #16141a 62%)',
+    draw: (a, t) => area('#16141a') + `<path d="M96 ${t - 2} L56 ${t + 30} L78 ${t + 30} L60 156 L106 ${t + 18} L84 ${t + 18} L104 ${t - 2} Z"
+      fill="#ff3b5c" stroke="#19f0ff" stroke-width="3" stroke-linejoin="round"/>`,
+  },
+  'reggae': {
+    main: '#2f9e44', swatch: 'linear-gradient(#2f9e44 0 33%, #ffd43b 33% 66%, #e03131 66%)',
+    draw: (a, t) => area('#e03131') + `<rect x="0" y="80" width="160" height="${t - 62}" fill="#2f9e44"/>
+      <rect x="0" y="${t + 18}" width="160" height="18" fill="#ffd43b"/>`,
+  },
+  'grunge': {
+    main: '#2f6b3a', swatch: 'linear-gradient(90deg, #2f6b3a 0 40%, #f1f3f5 40% 60%, #2f6b3a 60%)',
+    draw: () => area('#2f6b3a') + vBars(0, 150, 18, 7, '#14301b', 0.8) + hBars(84, 176, 18, 7, '#14301b', 0.6)
+      + vBars(12, 156, 18, 1.5, '#c92a2a', 0.8)
+      + `<rect x="68" y="80" width="24" height="100" fill="#f1f3f5"/><path d="M68 80 V180 M92 80 V180" stroke="${INK}" stroke-width="2"/>`,
+  },
+  'turnê': {
+    main: '#212529', swatch: 'linear-gradient(90deg, #111 0 25%, #f1f3f5 25% 75%, #111 75%)',
+    draw: () => area('#f1f3f5') + '<path d="M0 80 H56 L30 180 H0 Z M160 80 H104 L130 180 H160 Z" fill="#111"/>',
+  },
+  'pop': {
+    main: '#ff4fa3', swatch: 'radial-gradient(#fff 0 1.5px, transparent 2px) 0 0 / 8px 8px, #ff4fa3',
+    draw: (a, t) => area('#ff4fa3') + [[40, t + 14], [120, t + 20], [54, t + 44], [108, t + 46], [80, t + 8]]
+      .map(([x, y]) => sparkle(x, y, 6, '#fff')).join(''),
+  },
+  'xadrez caipira': {
+    main: '#e03131',
+    swatch: 'repeating-linear-gradient(0deg, rgba(224,49,49,.55) 0 5px, transparent 5px 10px), repeating-linear-gradient(90deg, rgba(224,49,49,.55) 0 5px, #fff 5px 10px)',
+    draw: (a, t) => area('#fff') + vBars(0, 156, 12, 6, '#e03131', 0.55) + hBars(80, 176, 12, 6, '#e03131', 0.55)
+      + `<path d="M80 ${t + 4} V150" stroke="#9c1c1c" stroke-width="1.5"/>`,
+  },
+
+  // Games: cores e elementos clássicos, sem personagem desenhado.
+  'cogumelo': {
+    main: '#e03131', swatch: 'radial-gradient(#fff 0 3px, transparent 3.5px) 0 0 / 12px 12px, #e03131',
+    draw: (a, t) => area('#e03131') + [[44, t + 16, 10], [114, t + 12, 12], [78, t + 42, 8], [124, t + 46, 7], [36, t + 48, 7]]
+      .map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#f8f9fa"/>`).join(''),
+  },
+  'encanador': {
+    main: '#e03131', swatch: 'linear-gradient(#e03131 0 40%, #1c3faa 40%)',
+    draw: (a, t) => area('#e03131') + `<rect x="0" y="${t + 36}" width="160" height="100" fill="#1c3faa"/>
+      <rect x="54" y="${t + 18}" width="52" height="30" fill="#1c3faa"/>
+      <path d="M58 ${t + 20} L50 ${t - 4} M102 ${t + 20} L110 ${t - 4}" stroke="#1c3faa" stroke-width="9"/>
+      <circle cx="60" cy="${t + 25}" r="4" fill="#ffd43b" stroke="${INK}" stroke-width="1.5"/>
+      <circle cx="100" cy="${t + 25}" r="4" fill="#ffd43b" stroke="${INK}" stroke-width="1.5"/>`,
+  },
+  'herói da espada': {
+    main: '#2b8a3e', swatch: 'linear-gradient(#2b8a3e 0 60%, #7a4a1f 60% 72%, #2b8a3e 72%)',
+    draw: (a, t) => area('#2b8a3e') + `<path d="M64 ${t - 2} L80 ${t + 14} L96 ${t - 2} Z" fill="#f1f3f5"/>
+      <path d="M44 ${t - 2} L124 ${t + 42}" stroke="#7a4a1f" stroke-width="6"/>
+      <rect x="0" y="${t + 40}" width="160" height="9" fill="#7a4a1f"/>
+      <rect x="73" y="${t + 38}" width="14" height="13" rx="2" fill="none" stroke="#ffd43b" stroke-width="3"/>`,
+  },
+  'vida cheia': {
+    main: '#1b1f3b', swatch: 'radial-gradient(circle, #e03131 0 3px, transparent 3.5px) 0 0 / 10px 10px, #1b1f3b',
+    draw: (a, t) => area('#1b1f3b') + [47, 70, 93].map((x) => pixelRows(HEART_ROWS, x, t + 12, 3, '#e03131')).join(''),
+  },
+  'bloco de grama': {
+    main: '#6abe30', swatch: 'linear-gradient(#6abe30 0 30%, #8b5a2b 30%)',
+    draw: (a, t) => area('#8b5a2b') + `<rect x="0" y="80" width="160" height="${t - 64}" fill="#6abe30"/>`
+      + range(0, 152, 8).map((x, i) => `<rect x="${x}" y="${t + 16}" width="8" height="${[4, 8, 0, 6, 2][i % 5]}" fill="#6abe30"/>`).join('')
+      + [[20, 30, '#6b4220'], [44, 42, '#a9743c'], [100, 34, '#6b4220'], [128, 26, '#a9743c'], [60, 26, '#a9743c'], [116, 44, '#6b4220'], [32, 46, '#a9743c'], [84, 46, '#6b4220']]
+        .map(([x, dy, c]) => `<rect x="${x}" y="${t + dy}" width="8" height="8" fill="${c}"/>`).join(''),
+  },
+  'neon retrô': {
+    main: '#2a0a4a', swatch: 'linear-gradient(#2a0a4a 0 45%, #ffb627 45% 55%, #ff2bd6 55% 58%, #2a0a4a 58%)',
+    draw: (a, t) => {
+      const h = t + 30;
+      return area('#2a0a4a') + `<circle cx="80" cy="${h}" r="22" fill="#ffb627"/>`
+        + [[-12, 2], [-7, 3], [-3, 3]].map(([d, hh]) => `<rect x="50" y="${h + d}" width="60" height="${hh}" fill="#2a0a4a"/>`).join('')
+        + `<rect x="0" y="${h}" width="160" height="100" fill="#2a0a4a"/>`
+        + [0, 5, 12, 22].map((d) => `<path d="M0 ${h + d} H160" stroke="#ff2bd6" stroke-width="1.5"/>`).join('')
+        + range(-160, 320, 40).map((x) => `<path d="M80 ${h} L${x} ${h + 80}" stroke="#ff2bd6" stroke-width="1.5"/>`).join('');
+    },
+  },
+  'camuflado': {
+    main: '#4b5a2a',
+    swatch: 'radial-gradient(circle at 30% 40%, #2f3a1a 0 5px, transparent 6px), radial-gradient(circle at 70% 70%, #8a7a4a 0 6px, transparent 7px), #4b5a2a',
+    draw: () => area('#4b5a2a') + [[30, 100, 18, 10, 20, '#2f3a1a'], [96, 92, 22, 9, -15, '#8a7a4a'], [128, 124, 16, 11, 30, '#2f3a1a'],
+      [60, 132, 20, 8, -10, '#8a7a4a'], [20, 140, 14, 9, 0, '#6b7b3a'], [110, 150, 18, 8, 10, '#6b7b3a'], [76, 110, 12, 7, 40, '#2f3a1a']]
+      .map(([x, y, rx, ry, r, c]) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${c}" transform="rotate(${r} ${x} ${y})"/>`).join(''),
+  },
+  'anéis dourados': {
+    main: '#1c5fd1', swatch: 'radial-gradient(circle, transparent 0 2px, #ffd43b 2.5px 4px, transparent 4.5px) 0 0 / 12px 12px, #1c5fd1',
+    draw: (a, t) => area('#1c5fd1') + [[42, t + 14], [62, t + 8], [118, t + 16], [100, t + 40], [40, t + 42], [124, t + 46]]
+      .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="6" fill="none" stroke="#ffd43b" stroke-width="3"/>`).join(''),
+  },
+  'blocos caindo': {
+    main: '#212529', swatch: 'linear-gradient(90deg, #19f0ff 0 25%, #ffd43b 25% 50%, #b6ff3b 50% 75%, #ff3b5c 75%)',
+    draw: (a, t) => area('#212529') + [
+      [24, 138, '#19f0ff'], [36, 138, '#19f0ff'], [48, 138, '#19f0ff'], [60, 138, '#19f0ff'], [84, 138, '#ffd43b'], [96, 138, '#ffd43b'],
+      [108, 138, '#b6ff3b'], [120, 138, '#b6ff3b'], [132, 138, '#ff3b5c'], [24, 126, '#ff3b5c'], [84, 126, '#ffd43b'], [96, 126, '#ffd43b'],
+      [120, 126, '#b6ff3b'], [132, 126, '#ff3b5c'], [36, 126, '#ff3b5c'],
+      [92, t + 6, '#7048e8'], [104, t + 6, '#7048e8'], [116, t + 6, '#7048e8'], [104, t + 18, '#7048e8'],
+    ].map(([x, y, c]) => `<rect x="${x}" y="${y}" width="12" height="12" fill="${c}" stroke="${INK}" stroke-width="1.5"/>`).join(''),
+  },
+
+  // Animes: cores e cortes de roupa que lembram os mais famosos.
+  'ninja laranja': {
+    main: '#ff7a1a', swatch: 'linear-gradient(#212529 0 25%, #ff7a1a 25%)',
+    draw: (a, t) => area('#ff7a1a') + `<rect x="0" y="80" width="160" height="${t - 64}" fill="#212529"/>
+      <path d="M80 ${t + 16} V150" stroke="#212529" stroke-width="3"/>
+      <path d="M60 ${t + 2} Q80 ${t + 20} 100 ${t + 2}" fill="none" stroke="#f1f3f5" stroke-width="5"/>`,
+  },
+  'gi de luta': {
+    main: '#ff7a1a', swatch: 'linear-gradient(135deg, #ff7a1a 0 45%, #1c3faa 45% 55%, #ff7a1a 55%)',
+    draw: (a, t) => area('#ff7a1a') + `<path d="M56 ${t - 2} L80 ${t + 30} L104 ${t - 2} Z" fill="#1c3faa"/>
+      <path d="M56 ${t - 2} L88 ${t + 42}" stroke="#d9480f" stroke-width="3"/>
+      <rect x="0" y="${t + 40}" width="160" height="9" fill="#1c3faa"/>
+      <path d="M84 ${t + 48} l-4 14 M90 ${t + 48} l4 14" stroke="#1c3faa" stroke-width="5"/>`,
+  },
+  'colete pirata': {
+    main: '#d1001f', swatch: 'linear-gradient(90deg, #d1001f 0 38%, #f2c9a0 38% 62%, #d1001f 62%)',
+    draw: (a, t) => area('#d1001f') + `<path d="M64 ${t - 2} L70 ${t + 42} H90 L96 ${t - 2} Z" fill="${a.skin}"/>
+      <path d="M64 ${t - 2} L70 ${t + 42} M96 ${t - 2} L90 ${t + 42}" stroke="${INK}" stroke-width="2"/>
+      <rect x="0" y="${t + 42}" width="160" height="12" fill="#ffd43b"/>`,
+  },
+  'xadrez verde': {
+    main: '#2b8a3e', swatch: 'conic-gradient(#111 0 25%, #2b8a3e 0 50%, #111 0 75%, #2b8a3e 0) 0 0 / 12px 12px',
+    draw: () => area('#2b8a3e') + range(0, 144, 16).flatMap((x) => range(80, 176, 16).map((y) =>
+      ((x + y) / 16) % 2 ? `<rect x="${x}" y="${y}" width="16" height="16" fill="#111"/>` : '')).join(''),
+  },
+  'marinheiro': {
+    main: '#1c3faa', swatch: 'linear-gradient(#1c3faa 0 30%, #f8f9fa 30%)',
+    draw: (a, t) => area('#f8f9fa') + `<path d="M28 ${t - 4} H132 L118 ${t + 22} L80 ${t + 36} L42 ${t + 22} Z" fill="#1c3faa"/>
+      <path d="M38 ${t + 14} L80 ${t + 28} L122 ${t + 14}" fill="none" stroke="#f8f9fa" stroke-width="2"/>
+      <path d="M66 ${t - 4} L80 ${t + 20} L94 ${t - 4} Z" fill="#f8f9fa"/>
+      <path d="M80 ${t + 28} l-12 -7 v14 Z M80 ${t + 28} l12 -7 v14 Z" fill="#e03131" stroke="${INK}" stroke-width="1.5"/>`,
+  },
+  'jaqueta cadete': {
+    main: '#8b5a2b', swatch: 'linear-gradient(90deg, #8b5a2b 0 40%, #f1f3f5 40% 60%, #8b5a2b 60%)',
+    draw: (a, t) => area('#f1f3f5') + `<path d="M0 80 H66 L70 ${t + 40} H0 Z M160 80 H94 L90 ${t + 40} H160 Z" fill="#8b5a2b"/>
+      <path d="M66 80 L70 ${t + 40} M94 80 L90 ${t + 40}" stroke="${INK}" stroke-width="2"/>
+      <path d="M0 ${t + 28} H160 M0 ${t + 42} H160 M50 ${t + 42} L80 152 M110 ${t + 42} L80 152" stroke="#3b2a1a" stroke-width="4"/>`,
+  },
+  'robô gigante': {
+    main: '#1c3faa', swatch: 'linear-gradient(#1c3faa 0 45%, #f1f3f5 45%)',
+    draw: (a, t) => area('#f1f3f5') + `<path d="M10 ${t - 4} H150 L132 ${t + 32} H28 Z" fill="#1c3faa" stroke="${INK}" stroke-width="2"/>
+      <path d="M40 ${t + 6} h22 v14 h-22 Z M98 ${t + 6} h22 v14 h-22 Z" fill="#ffd43b" stroke="${INK}" stroke-width="1.5"/>
+      <path d="M40 ${t + 11} h22 M40 ${t + 15} h22 M98 ${t + 11} h22 M98 ${t + 15} h22" stroke="${INK}" stroke-width="1.2"/>
+      <rect x="68" y="${t + 34}" width="24" height="16" fill="#e03131" stroke="${INK}" stroke-width="2"/>`,
+  },
+  'kimono': {
+    main: '#212529', swatch: 'linear-gradient(135deg, #212529 0 42%, #f1f3f5 42% 52%, #212529 52%)',
+    draw: (a, t) => area('#212529') + `<path d="M58 ${t - 2} L94 ${t + 44} M102 ${t - 2} L80 ${t + 26}" stroke="#f1f3f5" stroke-width="7"/>
+      <rect x="0" y="${t + 42}" width="160" height="10" fill="#495057"/>`,
+  },
+  'mangá': {
+    main: '#212529', swatch: 'radial-gradient(#111 0 1.5px, transparent 2px) 0 0 / 6px 6px, #f8f9fa',
+    draw: (a, t) => area('#f8f9fa') + range(0, 345, 15).map((d) => {
+      const r = d * Math.PI / 180;
+      const p = (k) => `${(80 + k * Math.cos(r)).toFixed(1)} ${(t + 30 + k * Math.sin(r)).toFixed(1)}`;
+      return `<path d="M${p(34)} L${p(120)}" stroke="#111" stroke-width="1.5"/>`;
+    }).join(''),
+  },
+
+  // Filmes: figurinos famosos só pelas cores e pelo corte.
+  'teia': {
+    main: '#d1001f', swatch: 'linear-gradient(90deg, #1c3faa 0 20%, #d1001f 20% 80%, #1c3faa 80%)',
+    draw: (a, t) => area('#d1001f')
+      + `<path d="M0 ${t + 16} L40 ${t + 26} L46 180 H0 Z M160 ${t + 16} L120 ${t + 26} L114 180 H160 Z" fill="#1c3faa"/>`
+      + spiderWeb(80, t + 24),
+  },
+  'herói de capa': {
+    main: '#1c5fd1', swatch: 'linear-gradient(90deg, #d1001f 0 15%, #1c5fd1 15% 85%, #d1001f 85%)',
+    draw: (a, t) => area('#1c5fd1') + `<path d="M0 80 H44 Q34 ${t + 10} 26 180 H0 Z M160 80 H116 Q126 ${t + 10} 134 180 H160 Z" fill="#d1001f"/>
+      <rect x="0" y="${t + 44}" width="160" height="7" fill="#ffd43b"/>`,
+  },
+  'bruxinho': {
+    main: '#212529',
+    swatch: 'linear-gradient(90deg, #212529 0 40%, #7a1430 40% 46%, #ffd43b 46% 54%, #7a1430 54% 60%, #212529 60%)',
+    draw: (a, t) => area('#212529') + `<path d="M60 ${t - 2} L80 ${t + 44} L100 ${t - 2} Z" fill="#f1f3f5"/>
+      <path d="M76 ${t + 4} H84 L87 ${t + 38} L80 ${t + 46} L73 ${t + 38} Z" fill="#7a1430"/>
+      <path d="M75 ${t + 14} L85 ${t + 10} M74 ${t + 24} L86 ${t + 20} M74 ${t + 34} L86 ${t + 30}" stroke="#ffd43b" stroke-width="2.5"/>
+      <path d="M60 ${t - 2} L80 ${t + 44} L100 ${t - 2}" fill="none" stroke="${INK}" stroke-width="2"/>`,
+  },
+  'smoking': {
+    main: '#111', swatch: 'linear-gradient(90deg, #111 0 38%, #f8f9fa 38% 62%, #111 62%)',
+    draw: (a, t) => area('#111') + `<path d="M62 ${t - 2} L80 ${t + 46} L98 ${t - 2} Z" fill="#f8f9fa"/>
+      <path d="M62 ${t - 2} L72 ${t + 20} L66 ${t + 26} L80 ${t + 46} M98 ${t - 2} L88 ${t + 20} L94 ${t + 26} L80 ${t + 46}" fill="none" stroke="#495057" stroke-width="3"/>
+      <path d="M80 ${t + 7} l-9 -5 v10 Z M80 ${t + 7} l9 -5 v10 Z" fill="#111"/>
+      <circle cx="80" cy="${t + 20}" r="1.6" fill="#111"/><circle cx="80" cy="${t + 30}" r="1.6" fill="#111"/>`,
+  },
+  'código verde': {
+    main: '#0a0f0a', swatch: 'repeating-linear-gradient(90deg, #0a0f0a 0 5px, #2fe36a 5px 6px)',
+    draw: () => area('#0a0f0a') + range(4, 150, 10).map((x, i) => {
+      const start = 80 + (i * 37) % 56;
+      return range(0, 4, 1).map((k) =>
+        `<rect x="${x}" y="${start + k * 9}" width="3" height="6" fill="#2fe36a" opacity="${(0.2 + k * 0.2).toFixed(1)}"/>`).join('');
+    }).join(''),
+  },
+  'caça-fantasma': {
+    main: '#c9b48a', swatch: 'linear-gradient(90deg, #c9b48a 0 45%, #6c757d 45% 55%, #c9b48a 55%)',
+    draw: (a, t) => area('#c9b48a') + `<path d="M44 ${t} L50 150 M116 ${t} L110 150" stroke="#495057" stroke-width="7"/>
+      <path d="M80 ${t + 2} V150" stroke="#6c757d" stroke-width="3"/>
+      <rect x="90" y="${t + 12}" width="18" height="8" rx="2" fill="#f8f9fa" stroke="${INK}" stroke-width="1"/>`,
+  },
+  'manto do mestre': {
+    main: '#7a5230', swatch: 'linear-gradient(90deg, #7a5230 0 22%, #e9d8b4 22% 78%, #7a5230 78%)',
+    draw: (a, t) => area('#e9d8b4') + `<path d="M58 ${t - 2} L90 ${t + 42} M102 ${t - 2} L76 ${t + 28}" stroke="#a8875a" stroke-width="5"/>
+      <rect x="0" y="${t + 42}" width="160" height="12" fill="#6b4220"/>
+      <path d="M0 80 H34 L44 180 H0 Z M160 80 H126 L116 180 H160 Z" fill="#7a5230"/>`,
+  },
+  'astronauta': {
+    main: '#e9ecef', swatch: 'linear-gradient(#f1f3f5 0 60%, #1c3faa 60% 70%, #f1f3f5 70%)',
+    draw: (a, t) => area('#f1f3f5') + `<rect x="62" y="${t + 18}" width="36" height="22" rx="3" fill="#adb5bd" stroke="${INK}" stroke-width="1.5"/>
+      <circle cx="70" cy="${t + 29}" r="3" fill="#e03131"/><circle cx="80" cy="${t + 29}" r="3" fill="#2f9e44"/><circle cx="90" cy="${t + 29}" r="3" fill="#ffd43b"/>
+      <rect x="36" y="${t + 6}" width="16" height="11" fill="#1c3faa"/><path d="M36 ${t + 10} h16 M36 ${t + 14} h16" stroke="#e03131" stroke-width="1.5"/>
+      <rect x="0" y="${t + 44}" width="160" height="6" fill="#1c3faa"/>`,
+  },
+  'pirata': {
+    main: '#e03131',
+    swatch: 'linear-gradient(90deg, #212529 0 22%, transparent 22% 78%, #212529 78%), repeating-linear-gradient(0deg, #e03131 0 5px, #f8f9fa 5px 10px)',
+    draw: () => area('#f8f9fa') + hBars(84, 176, 12, 6, '#e03131') + '<path d="M0 80 H56 L62 180 H0 Z M160 80 H104 L98 180 H160 Z" fill="#212529"/>',
+  },
 };
 
 // Tipos de corpo: formato do tronco, mãos e ajuste da cabeça (escala e
@@ -141,6 +395,54 @@ const BODIES = {
 
 const HAIR_COLORS = ['#2b1a12', '#5c3a24', '#c9a227', '#e8590c', '#adb5bd', '#f8f9fa', '#212529'];
 
+// Abas do editor. 'nada' aparece em todas as abas do campo que tiver.
+const AVATAR_CATEGORIES = {
+  top: [
+    ['Cabelo', ['moicano', 'pompons', 'espetado', 'black power', 'cacheado', 'tranças', 'careca', 'topete', 'coque', 'liso longo']],
+    ['Boné e chapéu', ['gorro', 'boné', 'boné aba reta', 'capuz', 'bandana', 'pescador', 'viseira', 'chapéu de cowboy', 'capacete']],
+    ['Fantasia', ['coroa', 'chapéu de palha', 'chapéu de bruxo', 'orelhas de gato', 'chifres', 'tricórnio', 'cartola', 'auréola']],
+  ],
+  extra: [
+    ['Gamer', ['headset', 'fone', 'óculos neon']],
+    ['Torcida', ['faixa', 'pintura', 'bochecha']],
+    ['Estilo', ['óculos', 'óculos escuros']],
+    ['Personagem', ['tapa-olho', 'bandana ninja', 'máscara']],
+  ],
+  kit: [
+    ['Lisa', ['lisa']],
+    ['Times', ['rubro-negra', 'alvinegra', 'tricolor faixa', 'verdão', 'faixa diagonal', 'tricolor grená', 'colorada', 'celeste',
+      'tricolor gaúcha', 'canarinho', 'alviverde listrada', 'rubro-negra vertical', 'tricolor baiana', 'celeste listrada', 'goleiro neon',
+      'alvirrubra', 'alvinegra horizontal', 'alviverde vertical', 'verde e amarela listrada', 'meio a meio', 'branca faixa verde',
+      'branca clássica', 'faixa diagonal vermelha']],
+    ['Bandas', ['rock clássico', 'metal', 'punk', 'raio', 'reggae', 'grunge', 'turnê', 'pop', 'xadrez caipira']],
+    ['Games', ['cogumelo', 'encanador', 'herói da espada', 'vida cheia', 'bloco de grama', 'neon retrô', 'camuflado', 'anéis dourados', 'blocos caindo']],
+    ['Animes', ['ninja laranja', 'gi de luta', 'colete pirata', 'xadrez verde', 'marinheiro', 'jaqueta cadete', 'robô gigante', 'kimono', 'mangá']],
+    ['Filmes', ['teia', 'herói de capa', 'bruxinho', 'smoking', 'código verde', 'caça-fantasma', 'manto do mestre', 'astronauta', 'pirata']],
+  ],
+  symbol: [
+    ['Número', ['10', '9', '7', '11', '1']],
+    ['Esporte', ['bola', 'troféu']],
+    ['Rock', ['raio', 'caveira', 'guitarra']],
+    ['Geek', ['controle', 'cogumelo', 'shuriken', 'claquete']],
+    ['Outros', ['estrela', 'coração']],
+  ],
+  chair: [
+    ['Gamer', ['puff', 'trono', 'escritório', 'cogumelo gigante']],
+    ['Esporte', ['banco de reserva', 'bola', 'cadeira de estádio']],
+    ['Rolê', ['cadeira de praia', 'rede', 'caixote', 'pneus', 'boteco', 'sofá', 'cooler']],
+    ['Show e cinema', ['amplificador', 'poltrona de cinema', 'cadeira de diretor']],
+    ['Fantasia', ['trono de rei', 'trono de espadas']],
+  ],
+  item: [
+    ['Gamer', ['controle', 'celular']],
+    ['Cinema', ['pipoca', 'refri']],
+    ['Esporte', ['bola', 'cordão']],
+    ['Bandas', ['guitarra', 'microfone']],
+    ['Fantasia', ['katana', 'espada laser', 'varinha', 'onigiri']],
+  ],
+};
+const allIn = (key) => AVATAR_CATEGORIES[key].flatMap(([, list]) => list);
+
 const AVATAR_OPTIONS = {
   body: Object.keys(BODIES),
   skin: ['#f5d0b0', '#f2c9a0', '#e9b98f', '#c68a5e', '#8d5a3b', '#5c3a24'],
@@ -150,17 +452,15 @@ const AVATAR_OPTIONS = {
   facial: ['nada', 'bigode', 'cavanhaque', 'barba', 'barba rala'],
   marks: ['nada', 'sardas', 'cicatriz', 'curativo', 'pintinha'],
   hairColor: HAIR_COLORS,
-  top: ['nada', 'gorro', 'boné', 'capuz', 'moicano', 'pompons', 'espetado', 'black power', 'cacheado', 'tranças',
-    'careca', 'bandana', 'pescador', 'viseira', 'capacete', 'coroa'],
+  top: ['nada', ...allIn('top')],
   topColor: [...AVATAR_PALETTE, '#2b1a12', '#c9a227'],
-  extra: ['nada', 'headset', 'faixa', 'pintura', 'óculos neon', 'fone', 'bochecha', 'óculos'],
-  kit: Object.keys(KITS),
+  extra: ['nada', ...allIn('extra')],
+  kit: allIn('kit'),
   shirt: AVATAR_PALETTE,
-  symbol: ['nada', '10', '9', '7', '11', '1', 'bola', 'controle', 'troféu', 'estrela', 'raio', 'coração', 'caveira'],
+  symbol: ['nada', ...allIn('symbol')],
   pants: ['#343a40', '#1864ab', '#2b2b2b', '#5c3d2e', '#7048e8', '#2f9e44'],
-  chair: ['puff', 'trono', 'escritório', 'trono de rei', 'banco de reserva', 'bola', 'cadeira de estádio',
-    'cadeira de praia', 'rede', 'caixote', 'pneus', 'boteco', 'sofá', 'cooler'],
-  item: ['nada', 'controle', 'pipoca', 'refri', 'celular', 'bola', 'cordão'],
+  chair: allIn('chair'),
+  item: ['nada', ...allIn('item')],
 };
 
 // Seções do editor de boneco.
@@ -259,6 +559,48 @@ function avatarTop(a) {
       return `<path d="M48 36 L52 6 L66 22 L80 2 L94 22 L108 6 L112 36 Z" fill="#ffd43b" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
         <rect x="48" y="30" width="64" height="9" rx="2" fill="#f59f00" stroke="${INK}" stroke-width="2"/>
         <circle cx="64" cy="34.5" r="3" fill="#e03131"/><circle cx="80" cy="34.5" r="3" fill="#1c7ed6"/><circle cx="96" cy="34.5" r="3" fill="#2f9e44"/>`;
+    case 'topete':
+      return `<path d="M40 52 Q36 30 58 24 Q66 4 96 6 Q124 10 118 30 Q124 40 120 52 Q102 36 80 40 Q58 36 40 52 Z" fill="${c}" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M66 20 Q84 10 106 16" fill="none" stroke="${INK}" stroke-width="1.5" opacity=".5"/>`;
+    case 'coque':
+      return `<circle cx="80" cy="16" r="15" fill="${c}" stroke="${INK}" stroke-width="2.5"/>
+        <path d="M38 56 Q80 10 122 56 Q80 40 38 56 Z" fill="${c}" stroke="${INK}" stroke-width="2.5"/>
+        <rect x="70" y="26" width="20" height="6" rx="3" fill="${trim}" stroke="${INK}" stroke-width="1.5"/>`;
+    case 'liso longo':
+      return `<path d="M38 60 Q36 22 80 22 Q124 22 122 60 Q112 42 98 44 Q88 34 76 42 Q60 36 38 60 Z" fill="${c}" stroke="${INK}" stroke-width="2.5"/>`;
+    case 'boné aba reta':
+      return `<path d="M38 50 Q80 4 122 50 Z" fill="${c}" stroke="${INK}" stroke-width="3"/>
+        <path d="M30 46 H130 L126 56 H34 Z" fill="${trim}" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+        <circle cx="106" cy="51" r="3.5" fill="#ffd43b" stroke="${INK}" stroke-width="1"/>`;
+    case 'chapéu de cowboy':
+      return `<path d="M50 46 Q46 14 64 16 Q80 24 96 16 Q114 14 110 46 Z" fill="${c}" stroke="${INK}" stroke-width="3"/>
+        <rect x="50" y="36" width="60" height="7" fill="${trim}"/>
+        <path d="M10 40 Q24 56 80 50 Q136 56 150 40 Q146 60 80 62 Q14 60 10 40 Z" fill="${c}" stroke="${INK}" stroke-width="3"/>`;
+    case 'chapéu de palha':
+      return `<path d="M48 46 Q48 14 80 14 Q112 14 112 46 Z" fill="#f2c94c" stroke="${INK}" stroke-width="3"/>
+        <rect x="48" y="35" width="64" height="9" fill="#e03131" stroke="${INK}" stroke-width="2"/>
+        <ellipse cx="80" cy="48" rx="62" ry="10" fill="#f2c94c" stroke="${INK}" stroke-width="3"/>
+        <path d="M30 48 Q80 56 130 48" fill="none" stroke="#c9a227" stroke-width="1.5"/>`;
+    case 'chapéu de bruxo':
+      return `<path d="M44 48 L82 -6 Q90 -10 96 0 L88 4 L116 48 Z" fill="${c}" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+        <rect x="50" y="36" width="61" height="8" fill="${trim}"/>
+        <path d="M74 20 l2 4 4 .5 -3 2.8 .8 4 -3.8 -2 -3.8 2 .8 -4 -3 -2.8 4 -.5z" fill="#ffd43b"/>
+        <ellipse cx="80" cy="50" rx="56" ry="9" fill="${c}" stroke="${INK}" stroke-width="3"/>`;
+    case 'orelhas de gato':
+      return `<path d="M40 50 L42 10 L70 34 Z M120 50 L118 10 L90 34 Z" fill="${c}" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M46 40 L47 20 L62 33 Z M114 40 L113 20 L98 33 Z" fill="#ff8fab"/>`;
+    case 'chifres':
+      return `<path d="M50 36 Q34 20 40 0 Q50 18 64 30 Z M110 36 Q126 20 120 0 Q110 18 96 30 Z" fill="${c}" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>`;
+    case 'tricórnio':
+      return `<path d="M24 46 Q40 8 80 12 Q120 8 136 46 Q108 34 80 40 Q52 34 24 46 Z" fill="${c}" stroke="${INK}" stroke-width="3"/>
+        <path d="M28 44 Q52 32 80 38 Q108 32 132 44" fill="none" stroke="#ffd43b" stroke-width="3"/>`;
+    case 'cartola':
+      return `<rect x="54" y="-6" width="52" height="48" rx="3" fill="${c}" stroke="${INK}" stroke-width="3"/>
+        <rect x="55.5" y="28" width="49" height="8" fill="${trim}"/>
+        <ellipse cx="80" cy="44" rx="40" ry="7" fill="${c}" stroke="${INK}" stroke-width="3"/>`;
+    case 'auréola':
+      return `<ellipse cx="80" cy="10" rx="30" ry="8" fill="none" stroke="#ffd43b" stroke-width="6"/>
+        <ellipse cx="80" cy="10" rx="30" ry="8" fill="none" stroke="#fff3bf" stroke-width="2"/>`;
     default:
       return '';
   }
@@ -276,6 +618,8 @@ function avatarTopBack(a) {
         for (let i = 0; i < 5; i++) braid += `<ellipse cx="${x + dx}" cy="${80 + i * 12}" rx="7" ry="8" fill="${c}" stroke="${INK}" stroke-width="2"/>`;
         return `${braid}<circle cx="${x + dx}" cy="142" r="4" fill="${a.shirt}" stroke="${INK}" stroke-width="1.5"/>`;
       }).join('');
+    case 'liso longo':
+      return `<path d="M36 56 Q30 100 36 132 L56 132 Q48 96 50 60 Z M124 56 Q130 100 124 132 L104 132 Q112 96 110 60 Z" fill="${c}" stroke="${INK}" stroke-width="2.5"/>`;
     default:
       return '';
   }
@@ -412,6 +756,23 @@ function avatarExtra(a) {
       return `<circle cx="67" cy="62" r="15" fill="none" stroke="${INK}" stroke-width="3.5"/>
         <circle cx="93" cy="62" r="15" fill="none" stroke="${INK}" stroke-width="3.5"/>
         <path d="M82 62 H78" stroke="${INK}" stroke-width="3"/>`;
+    case 'óculos escuros':
+      return `<path d="M40 49 H120" stroke="#111" stroke-width="4"/>
+        <path d="M46 48 H78 Q78 76 64 76 Q48 76 46 48 Z M82 48 H114 Q112 76 96 76 Q82 76 82 48 Z" fill="#111" stroke="${INK}" stroke-width="2.5"/>
+        <path d="M52 54 l8 0 M88 54 l8 0" stroke="#fff" stroke-width="2" opacity=".5" stroke-linecap="round"/>`;
+    case 'tapa-olho':
+      return `<path d="M37 70 L56 60 M78 54 Q100 40 122 44" fill="none" stroke="${INK}" stroke-width="3"/>
+        <ellipse cx="67" cy="62" rx="14" ry="15" fill="#111" stroke="${INK}" stroke-width="2"/>`;
+    case 'bandana ninja':
+      return `<rect x="37" y="36" width="86" height="11" rx="3" fill="${a.topColor}" stroke="${INK}" stroke-width="2.5"/>
+        <path d="M120 40 L138 48 L130 54 Z M120 43 L134 60 L124 61 Z" fill="${a.topColor}" stroke="${INK}" stroke-width="2"/>
+        <rect x="63" y="33" width="34" height="16" rx="3" fill="#ced4da" stroke="${INK}" stroke-width="2"/>
+        <circle cx="67.5" cy="41" r="1.5" fill="${INK}"/><circle cx="92.5" cy="41" r="1.5" fill="${INK}"/>
+        <path d="M73 41 h14" stroke="${INK}" stroke-width="2" stroke-linecap="round"/>`;
+    case 'máscara':
+      return `<path fill-rule="evenodd" d="M34 56 Q50 44 80 52 Q110 44 126 56 Q126 74 108 78 Q92 80 80 70 Q68 80 52 78 Q34 74 34 56 Z
+        M57 62 a10 8 0 1 0 20 0 a10 8 0 1 0 -20 0 Z M83 62 a10 8 0 1 0 20 0 a10 8 0 1 0 -20 0 Z"
+        fill="${a.topColor}" stroke="${INK}" stroke-width="2.5"/>`;
     default:
       return '';
   }
@@ -447,6 +808,23 @@ function avatarSymbol(a) {
     case 'caveira':
       return `<path d="M70 120 Q70 108 80 108 Q90 108 90 120 L87 124 V130 H73 V124 Z" fill="${fill}"/>
         <circle cx="76" cy="118" r="2.6" fill="${a.shirt}"/><circle cx="84" cy="118" r="2.6" fill="${a.shirt}"/>`;
+    case 'guitarra':
+      return `<g transform="rotate(-35 80 124)">
+        <path d="M80 124 V104" stroke="${INK}" stroke-width="3.5"/><rect x="76.5" y="100" width="7" height="6" rx="1" fill="${INK}"/>
+        <path d="M80 122 Q88 120 88 128 Q92 132 88 138 Q80 144 72 138 Q68 132 72 128 Q72 120 80 122 Z" fill="${fill}" stroke="${INK}" stroke-width="1.6"/>
+        <circle cx="80" cy="131" r="2.5" fill="${INK}"/></g>`;
+    case 'cogumelo':
+      return `<path d="M66 124 Q66 108 80 108 Q94 108 94 124 Z" fill="#e03131" stroke="${INK}" stroke-width="1.6"/>
+        <circle cx="74" cy="116" r="3" fill="#fff"/><circle cx="87" cy="115" r="2.5" fill="#fff"/>
+        <rect x="73" y="124" width="14" height="12" rx="3" fill="#f8f9fa" stroke="${INK}" stroke-width="1.6"/>
+        <circle cx="77" cy="129" r="1.3" fill="${INK}"/><circle cx="83" cy="129" r="1.3" fill="${INK}"/>`;
+    case 'shuriken':
+      return `<path d="M80 108 L84 120 L96 124 L84 128 L80 140 L76 128 L64 124 L76 120 Z" fill="${fill}" stroke="${INK}" stroke-width="1.4"/>
+        <circle cx="80" cy="124" r="2.6" fill="${INK}"/>`;
+    case 'claquete':
+      return `<rect x="66" y="118" width="28" height="18" rx="1.5" fill="${fill}" stroke="${INK}" stroke-width="1.6"/>
+        <path d="M66 118 L64 110 L92 106 L94 114 Z" fill="${INK}"/>
+        <path d="M70 109 l4 7 M77 108 l4 7 M84 107 l4 7" stroke="#fff" stroke-width="2.5"/>`;
     default:
       return '';
   }
@@ -553,6 +931,39 @@ function avatarHandItem(a) {
       return `<g transform="translate(${hx - 4} ${hy - 13}) rotate(-12)">
         <rect x="-6" y="-11" width="12" height="22" rx="3" fill="#212529" stroke="${INK}" stroke-width="2"/>
         <rect x="-4" y="-8" width="8" height="15" rx="1.5" fill="#19f0ff" opacity=".85"/></g>${hand}`;
+    case 'guitarra':
+      // No colo, braço apontando pra mão direita; as duas mãos por cima.
+      return `<g transform="translate(70 152) rotate(-24)">
+        <rect x="4" y="-3.5" width="62" height="7" fill="#7a4a1f" stroke="${INK}" stroke-width="2"/>
+        <rect x="64" y="-6" width="14" height="12" rx="2" fill="#212529" stroke="${INK}" stroke-width="2"/>
+        <path d="M-30 0 Q-30 -20 -12 -16 Q-2 -24 6 -12 Q12 0 6 12 Q-2 24 -12 16 Q-30 20 -30 0 Z" fill="#d9480f" stroke="${INK}" stroke-width="2.5"/>
+        <circle cx="-8" cy="0" r="4.5" fill="${INK}"/>
+        <path d="M-20 -7 V7" stroke="#f8f9fa" stroke-width="3"/></g>
+        ${bodyOf(a).hands.map(([cx, cy, r]) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${a.topColor}" stroke="${INK}" stroke-width="2.5"/>`).join('')}`;
+    case 'microfone':
+      return `<g transform="translate(${hx} ${hy - 6}) rotate(-20)">
+        <rect x="-3.5" y="-6" width="7" height="22" rx="3" fill="#212529" stroke="${INK}" stroke-width="2"/>
+        <circle cx="0" cy="-12" r="8" fill="#adb5bd" stroke="${INK}" stroke-width="2"/>
+        <path d="M-6 -14 H6 M-6 -10 H6 M-2 -19 V-5 M2 -19 V-5" stroke="#868e96" stroke-width="1"/></g>${hand}`;
+    case 'katana':
+      return `<g transform="translate(${hx} ${hy}) rotate(12)">
+        <path d="M-2 -6 L-2 -88 Q0 -96 3 -88 L3 -6 Z" fill="#e9ecef" stroke="${INK}" stroke-width="1.8"/>
+        <rect x="-7" y="-8" width="15" height="4" rx="1.5" fill="#ffd43b" stroke="${INK}" stroke-width="1.2"/>
+        <rect x="-2.5" y="-4" width="6" height="18" fill="#212529" stroke="${INK}" stroke-width="1.5"/></g>${hand}`;
+    case 'espada laser':
+      return `<g transform="translate(${hx} ${hy}) rotate(12)">
+        <rect x="-4.5" y="-88" width="9" height="82" rx="4.5" fill="#19f0ff" opacity=".35"/>
+        <rect x="-2" y="-86" width="4" height="80" rx="2" fill="#e3fdff"/>
+        <rect x="-3.5" y="-8" width="7" height="22" rx="2" fill="#adb5bd" stroke="${INK}" stroke-width="1.5"/>
+        <path d="M-3.5 0 h7 M-3.5 4 h7" stroke="${INK}" stroke-width="1.2"/></g>${hand}`;
+    case 'varinha':
+      return `<g transform="translate(${hx} ${hy}) rotate(28)">
+        <path d="M-1.8 4 L-1.2 -40 L1.2 -40 L1.8 4 Z" fill="#6b4220" stroke="${INK}" stroke-width="1.5"/></g>
+        ${sparkle(hx + 20, hy - 39, 7, '#ffd43b')}${hand}`;
+    case 'onigiri':
+      return `<g transform="translate(${hx} ${hy - 12})">
+        <path d="M0 -13 Q3 -13 12 4 Q14 9 9 9 H-9 Q-14 9 -12 4 Q-3 -13 0 -13 Z" fill="#f8f9fa" stroke="${INK}" stroke-width="2"/>
+        <rect x="-6" y="0" width="12" height="9" fill="#1b3a1f"/></g>${hand}`;
     default:
       return '';
   }
@@ -676,6 +1087,47 @@ const CHAIRS = {
       <rect x="16" y="144" width="128" height="14" rx="5" fill="#f8f9fa" stroke="${INK}" stroke-width="3"/>
       <rect x="60" y="134" width="40" height="10" rx="4" fill="#f8f9fa" stroke="${INK}" stroke-width="2.5"/>
       <text x="80" y="188" text-anchor="middle" font-family="Permanent Marker" font-size="15" fill="#fff" opacity=".9">GELADA</text>`,
+  },
+  'cogumelo gigante': {
+    back: '',
+    front: `<path d="M50 176 Q46 206 56 206 H104 Q114 206 110 176 Z" fill="#f1e3c6" stroke="${INK}" stroke-width="3"/>
+      <path d="M6 178 Q10 140 80 140 Q150 140 154 178 Q80 190 6 178 Z" fill="#e03131" stroke="${INK}" stroke-width="3"/>
+      ${[[34, 160, 9], [80, 151, 10], [124, 158, 8], [58, 174, 5], [104, 174, 5]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#f8f9fa"/>`).join('')}`,
+  },
+  'amplificador': {
+    back: `<rect x="32" y="62" width="96" height="92" rx="5" fill="#1d1b20" stroke="${INK}" stroke-width="3"/>
+      <rect x="40" y="70" width="80" height="10" fill="#c9a227" opacity=".8"/>`,
+    front: `<rect x="14" y="150" width="132" height="56" rx="5" fill="#1d1b20" stroke="${INK}" stroke-width="3"/>
+      <rect x="22" y="158" width="116" height="34" rx="3" fill="#3a363d"/>
+      <path d="M22 164 H138 M22 170 H138 M22 176 H138 M22 182 H138 M22 188 H138" stroke="#1d1b20" stroke-width="2"/>
+      ${[40, 60, 80, 100, 120].map((x) => `<circle cx="${x}" cy="199" r="3" fill="#c9a227"/>`).join('')}`,
+  },
+  'poltrona de cinema': {
+    back: `<path d="M30 154 L28 64 Q80 50 132 64 L130 154 Z" fill="#a51111" stroke="${INK}" stroke-width="3"/>
+      <path d="M50 70 V150 M80 64 V150 M110 70 V150" stroke="#7d0b0b" stroke-width="3"/>`,
+    front: `<rect x="22" y="150" width="116" height="24" rx="8" fill="#c92a2a" stroke="${INK}" stroke-width="3"/>
+      <rect x="4" y="128" width="24" height="46" rx="6" fill="#7d0b0b" stroke="${INK}" stroke-width="3"/>
+      <rect x="132" y="128" width="24" height="46" rx="6" fill="#7d0b0b" stroke="${INK}" stroke-width="3"/>
+      <ellipse cx="144" cy="129" rx="9" ry="3.5" fill="#111" stroke="${INK}" stroke-width="2"/>
+      <rect x="26" y="174" width="108" height="30" fill="#2b2b2b" stroke="${INK}" stroke-width="3"/>`,
+  },
+  'cadeira de diretor': {
+    back: `<path d="M34 60 V154 M126 60 V154" stroke="#8a5a26" stroke-width="7" stroke-linecap="round"/>
+      <rect x="30" y="62" width="100" height="28" fill="#212529" stroke="${INK}" stroke-width="3"/>`,
+    front: `<path d="M14 130 H40 M120 130 H146" stroke="#8a5a26" stroke-width="6" stroke-linecap="round"/>
+      <path d="M30 164 L130 204 M130 164 L30 204 M30 204 H130" stroke="#8a5a26" stroke-width="7" stroke-linecap="round"/>
+      <rect x="24" y="148" width="112" height="14" fill="#212529" stroke="${INK}" stroke-width="3"/>`,
+  },
+  'trono de espadas': {
+    back: `<path d="M24 154 L28 70 Q80 50 132 70 L136 154 Z" fill="#343a40" stroke="${INK}" stroke-width="3"/>
+      ${range(14, 146, 11).map((x, i) => {
+        const top = 8 + Math.abs(x - 80) * 0.45 + (i % 3) * 9;
+        return `<path d="M${x - 3} 154 L${x - 3} ${top + 10} L${x} ${top} L${x + 3} ${top + 10} L${x + 3} 154 Z" fill="#868e96" stroke="${INK}" stroke-width="1.5"/>`;
+      }).join('')}`,
+    front: `<path d="M2 132 H40 M120 132 H158" stroke="#adb5bd" stroke-width="6"/>
+      <path d="M8 124 V140 M152 124 V140" stroke="#495057" stroke-width="5" stroke-linecap="round"/>
+      <rect x="20" y="150" width="120" height="20" rx="4" fill="#495057" stroke="${INK}" stroke-width="3"/>
+      <rect x="10" y="170" width="140" height="34" fill="#343a40" stroke="${INK}" stroke-width="3"/>`,
   },
 };
 

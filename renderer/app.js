@@ -1439,9 +1439,12 @@ function updateThemeControls() {
 // ---------- Editor de boneco ----------
 
 let avatarDraft = null;
+// Aba aberta em cada campo com categorias; sem escolha, abre a da opção atual.
+let avatarTabs = {};
 
 function openAvatarEditor() {
   avatarDraft = { ...state.avatar };
+  avatarTabs = {};
   renderAvatarEditor();
   $('avatar-dialog').showModal();
 }
@@ -1469,6 +1472,29 @@ function avatarField(key, options) {
   field.className = 'field';
   const h = document.createElement('h4');
   h.textContent = AVATAR_LABELS[key];
+  field.append(h);
+  const cats = AVATAR_CATEGORIES[key];
+  if (cats) {
+    const current = cats.find(([, values]) => values.includes(avatarDraft[key]))?.[0];
+    const open = avatarTabs[key] ?? current ?? cats[0][0];
+    const tabs = document.createElement('div');
+    tabs.className = 'tabs';
+    for (const [name] of cats) {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'tab';
+      tab.textContent = name;
+      tab.classList.toggle('selected', name === open);
+      tab.classList.toggle('has-value', name === current);
+      tab.addEventListener('click', () => {
+        avatarTabs[key] = name;
+        renderAvatarEditor();
+      });
+      tabs.append(tab);
+    }
+    field.append(tabs);
+    options = [...(options.includes('nada') ? ['nada'] : []), ...cats.find(([name]) => name === open)[1]];
+  }
   const list = document.createElement('div');
   list.className = 'options';
   for (const value of options) {
@@ -1492,7 +1518,7 @@ function avatarField(key, options) {
     });
     list.append(btn);
   }
-  field.append(h, list);
+  field.append(list);
   return field;
 }
 
@@ -1767,6 +1793,7 @@ $('settings-close').addEventListener('click', () => $('settings-dialog').close()
 $('edit-avatar-room').addEventListener('click', openAvatarEditor);
 $('avatar-random').addEventListener('click', () => {
   avatarDraft = randomAvatar();
+  avatarTabs = {};
   renderAvatarEditor();
 });
 $('avatar-cancel').addEventListener('click', () => $('avatar-dialog').close());
