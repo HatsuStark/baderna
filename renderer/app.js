@@ -1452,40 +1452,48 @@ function renderAvatarEditor() {
   preview.insertAdjacentHTML('beforeend', avatarSeatSvg(avatarDraft));
 
   const fields = [];
-  for (const [key, options] of Object.entries(AVATAR_OPTIONS)) {
-    const field = document.createElement('div');
-    field.className = 'field';
-    const h = document.createElement('h4');
-    h.textContent = AVATAR_LABELS[key];
-    const list = document.createElement('div');
-    list.className = 'options';
-    for (const value of options) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      const isColor = value.startsWith('#');
-      btn.className = isColor ? 'swatch' : 'pill';
-      if (isColor) btn.style.background = value;
-      else btn.textContent = value;
-      if (key === 'kit') {
-        const chip = document.createElement('span');
-        chip.className = 'kit-chip';
-        chip.style.background = value === 'lisa' ? avatarDraft.shirt : KITS[value].swatch;
-        btn.prepend(chip);
-      }
-      btn.title = value;
-      btn.classList.toggle('selected', avatarDraft[key] === value);
-      btn.addEventListener('click', () => {
-        avatarDraft[key] = value;
-        renderAvatarEditor();
-      });
-      list.append(btn);
-    }
-    field.append(h, list);
-    fields.push(field);
+  for (const [title, keys] of AVATAR_GROUPS) {
+    const heading = document.createElement('h3');
+    heading.className = 'field-group';
+    heading.textContent = title;
+    fields.push(heading);
+    for (const key of keys) fields.push(avatarField(key, AVATAR_OPTIONS[key]));
   }
   const scroll = $('avatar-fields').scrollTop;
   $('avatar-fields').replaceChildren(...fields);
   $('avatar-fields').scrollTop = scroll;
+}
+
+function avatarField(key, options) {
+  const field = document.createElement('div');
+  field.className = 'field';
+  const h = document.createElement('h4');
+  h.textContent = AVATAR_LABELS[key];
+  const list = document.createElement('div');
+  list.className = 'options';
+  for (const value of options) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    const isColor = value.startsWith('#');
+    btn.className = isColor ? 'swatch' : 'pill';
+    if (isColor) btn.style.background = value;
+    else btn.textContent = value;
+    if (key === 'kit') {
+      const chip = document.createElement('span');
+      chip.className = 'kit-chip';
+      chip.style.background = value === 'lisa' ? avatarDraft.shirt : KITS[value].swatch;
+      btn.prepend(chip);
+    }
+    btn.title = value;
+    btn.classList.toggle('selected', avatarDraft[key] === value);
+    btn.addEventListener('click', () => {
+      avatarDraft[key] = value;
+      renderAvatarEditor();
+    });
+    list.append(btn);
+  }
+  field.append(h, list);
+  return field;
 }
 
 function saveAvatar() {
