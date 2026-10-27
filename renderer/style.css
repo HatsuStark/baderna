@@ -255,7 +255,7 @@ button.chip:disabled { opacity: 1; }
 .screen-view.hide-seats .screen-seats { background: none; }
 .screen-view.hide-seats .screen-seats-row { display: none; }
 #screen-seats-toggle {
-  pointer-events: auto; font-size: 1.8vh; padding: .4vh 1.4vh;
+  pointer-events: auto; display: grid; place-items: center; padding: .3vh 1.6vh;
   background: rgba(14, 14, 20, .75); border: 1px solid var(--line); border-radius: 999px;
 }
 /* Tamanho pela altura da tela: fica proporcional em 1080p, 1440p ou 4K. */
@@ -267,7 +267,13 @@ button.chip:disabled { opacity: 1; }
 .screen-seats .seat .tag { font-size: 1.5vh; padding: 0 .9vh; }
 .screen-seats .badge { font-size: 1vh; }
 .screen-seats .seat .vol { display: none; }
-#screen-seats-toggle.off { opacity: .55; }
+/* Seta pra baixo = esconder; escondida, vira pra cima = mostrar. */
+#screen-seats-toggle svg {
+  width: 2.4vh; height: 2.4vh; fill: none; stroke: currentColor; stroke-width: 2.6;
+  stroke-linecap: round; stroke-linejoin: round; transition: transform .2s;
+}
+#screen-seats-toggle.off { opacity: .6; }
+#screen-seats-toggle.off svg { transform: rotate(180deg); }
 
 /* ---------- Cadeiras ---------- */
 
