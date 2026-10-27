@@ -169,8 +169,6 @@ ipcMain.handle('screen:select', (_e, id) => {
 
 const HOTKEY_RE = /^(?:(?:Ctrl|Alt|Shift)\+){0,3}(?:[A-Z0-9]|F(?:[1-9]|1\d|2[0-4]))$/;
 
-ipcMain.handle('app:version', () => app.getVersion());
-
 ipcMain.handle('hotkeys:set', (_e, keys) => {
   globalShortcut.unregisterAll();
   const result = {};

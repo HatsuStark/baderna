@@ -20,7 +20,6 @@ contextBridge.exposeInMainWorld('baderna', {
   onScreenAudioError: (cb) => subscribe('screen-audio:error', cb),
   searchMovies: (query) => ipcRenderer.invoke('movies:search', query),
   setHotkeys: (keys) => ipcRenderer.invoke('hotkeys:set', keys),
-  appVersion: () => ipcRenderer.invoke('app:version'),
   iceServers: () => ipcRenderer.invoke('ice:servers'),
   onUpdateReady: (cb) => subscribe('update:ready', cb),
   updateStatus: () => ipcRenderer.invoke('update:status'),

@@ -57,7 +57,7 @@
       <div class="chips">
         <button id="save-chip" class="chip" type="button" title="Salvar esta sala"></button>
         <button id="room-chip" class="chip" type="button" title="Copiar código">sala <b id="room-code"></b></button>
-        <button id="count-chip" class="chip" type="button" title="Conexão com cada um da sala"></button>
+        <span id="count-chip" class="chip"></span>
         <span id="live-chips" class="chips"></span>
         <button id="movies-chip" class="chip" type="button" title="Filmes que a galera já viu">🎬 filmes <b id="movies-count"></b></button>
         <button id="theme-chip" class="chip" type="button">tema <b id="theme-name"></b></button>
@@ -114,20 +114,6 @@
       </nav>
     </div>
   </section>
-
-  <!-- ---------- Diagnóstico de conexão (clique em "N na baderna") ---------- -->
-  <dialog id="diag-dialog" class="wide-dialog">
-    <h2>Conexão com a galera</h2>
-    <p id="diag-net" class="status"></p>
-    <p id="diag-turn" class="status"></p>
-    <div id="diag-list" class="diag-list"></div>
-    <p class="status">Quem não se ouve: copie o relatório dos dois lados e mande pra quem cuida do app.</p>
-    <div class="dialog-actions">
-      <button id="diag-copy" class="ghost" type="button">Copiar relatório</button>
-      <span class="spacer"></span>
-      <button id="diag-close" class="primary" type="button">Fechar</button>
-    </div>
-  </dialog>
 
   <!-- ---------- Menu de uma pessoa (clique no boneco) ---------- -->
   <div id="person-menu" class="person-menu" hidden>
