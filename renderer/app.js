@@ -1007,23 +1007,21 @@ async function retuneScreen() {
   if (state.screen === screen) updateShareLabel();
 }
 
-// "Sua tela · H265 · Bia 1080p60 · Caio 720p30 · 9,4 Mbps"
+// "Sua tela · 1080p30, 4,2 Mbps": a melhor qualidade que está saindo e o
+// upload total da tela.
 function updateShareLabel() {
   if (!state.screen) return;
-  const parts = [];
-  const codecs = new Set();
+  let best = Infinity;
   let total = 0;
   for (const m of state.members.values()) {
     const pc = m.screenOut?.peerConnection;
     const sender = pc?.getSenders().find((x) => x.track?.kind === 'video');
     if (!sender || pc.connectionState !== 'connected') continue;
-    const params = sender.getParameters();
-    codecs.add(params.codecs?.[0]?.mimeType.split('/')[1]?.toUpperCase() ?? '?');
-    total += params.encodings?.[0]?.maxBitrate ?? 0;
-    parts.push(`${m.name} ${ladderStep(adaptOf(sender).level).label}`);
+    total += sender.getParameters().encodings?.[0]?.maxBitrate ?? 0;
+    best = Math.min(best, adaptOf(sender).level);
   }
-  setScreenLabel(state.myId, parts.length
-    ? `Sua tela · ${[...codecs].join('/')} · ${parts.join(' · ')} · ${mbps(total)} Mbps`
+  setScreenLabel(state.myId, Number.isFinite(best)
+    ? `Sua tela · ${ladderStep(best).label}, ${mbps(total)} Mbps`
     : 'Sua tela');
 }
 
@@ -1032,7 +1030,7 @@ function updateShareLabel() {
 // estatísticas da cópia que vai pra ela: limitada por banda ou CPU por 6 s,
 // desce um degrau; folgada por um bom tempo, sobe. Filme perde resolução
 // primeiro (mantém a fluidez); texto perde fps primeiro (mantém a nitidez).
-// Upload apertado limita todas as cópias, então todas descem juntas;
+// Tudo em silêncio, sem aviso no chat. Upload apertado limita todas as cópias, então todas descem juntas;
 // download ruim de um amigo só derruba a cópia dele.
 
 const ADAPT_INTERVAL_MS = 2000;
@@ -1104,7 +1102,6 @@ async function adaptScreen() {
       a.level++;
       a.bad = 0;
       a.lastDown = now;
-      addSystem(`A tela pra ${m.name} baixou pra ${ladderStep(a.level).label}: a conexão não estava aguentando.`);
     } else if (a.good >= ADAPT_UP_AFTER && a.level > 0 && now - a.lastDown > ADAPT_UP_HOLD_MS * 2 ** a.bounces) {
       const up = ladderStep(a.level - 1);
       // Só sobe se a estimativa de banda da conexão comporta o degrau de cima.
@@ -1112,7 +1109,6 @@ async function adaptScreen() {
       a.level--;
       a.good = 0;
       if (a.lastDown) a.bounces = Math.min(4, a.bounces + 1);
-      if (a.level === 0) addSystem(`A tela pra ${m.name} voltou pra ${up.label}.`);
     } else {
       continue;
     }
