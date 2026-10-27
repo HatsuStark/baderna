@@ -121,6 +121,7 @@ const state = {
   lastChat: null,     // { author, time, el } pra agrupar mensagens seguidas
   codecOrder: null,   // preferência de codec de vídeo desta máquina (medida uma vez)
   codecOrderPromise: null,
+  screenMuted: false, // mutei a tela que estou assistindo (só pra mim)
   stats: new Map(),   // prêmios da resenha: nome -> contadores
   statsTimer: 0,
   sessionStart: 0,
@@ -1331,11 +1332,47 @@ function watch(id) {
   state.watching = id;
   $('screen-box').replaceChildren(s.video);
   s.video.volume = Number($('screen-volume').value);
-  s.video.muted = !s.audible || state.deaf;
+  applyScreenAudio(s);
   s.video.play().catch(() => {});
   $('screen-label').textContent = s.label;
   $('screen-volume').parentElement.hidden = !s.audible;
   $('screen-view').hidden = false;
+}
+
+function applyScreenAudio(s) {
+  s.video.muted = !s.audible || state.deaf || state.screenMuted;
+  $('screen-mute').classList.toggle('off', state.screenMuted);
+  $('screen-mute').title = state.screenMuted ? 'Desmutar a tela (M)' : 'Mutar a tela (M)';
+}
+
+function toggleScreenMute() {
+  state.screenMuted = !state.screenMuted;
+  const s = state.screens.get(state.watching);
+  if (s) applyScreenAudio(s);
+}
+
+function setScreenVolume(v) {
+  const vol = Math.min(1, Math.max(0, v));
+  $('screen-volume').value = String(vol);
+  const s = state.screens.get(state.watching);
+  if (!s) return;
+  s.video.volume = vol;
+  // Mexer no volume desmuta, igual player de vídeo.
+  if (state.screenMuted && vol > 0) toggleScreenMute();
+}
+
+// Tela cheia: controles aparecem com o mouse e somem depois de parado.
+const SCREEN_CONTROLS_HIDE_MS = 2500;
+let screenControlsTimer = 0;
+
+function showScreenControls() {
+  const view = $('screen-view');
+  view.classList.add('controls');
+  clearTimeout(screenControlsTimer);
+  screenControlsTimer = setTimeout(() => {
+    if (!view.querySelector('.screen-bar:hover')) view.classList.remove('controls');
+    else showScreenControls();
+  }, SCREEN_CONTROLS_HIDE_MS);
 }
 
 function closeWatch() {
@@ -1402,7 +1439,7 @@ function toggleDeaf() {
   }
   for (const m of state.members.values()) applyMemberAudio(m);
   const s = state.screens.get(state.watching);
-  if (s) s.video.muted = !s.audible || state.deaf;
+  if (s) applyScreenAudio(s);
   broadcast(myProfile());
   updateDock();
   renderSelf();
@@ -2213,9 +2250,19 @@ $('btn-leave').addEventListener('click', leave);
 $('screen-close').addEventListener('click', closeWatch);
 $('screen-full').addEventListener('click', toggleFullscreen);
 $('screen-box').addEventListener('dblclick', toggleFullscreen);
-$('screen-volume').addEventListener('input', () => {
-  const s = state.screens.get(state.watching);
-  if (s) s.video.volume = Number($('screen-volume').value);
+$('screen-volume').addEventListener('input', () => setScreenVolume(Number($('screen-volume').value)));
+$('screen-mute').addEventListener('click', toggleScreenMute);
+$('screen-view').addEventListener('mousemove', showScreenControls);
+// Atalhos assistindo: M muta, setas sobem/descem o volume.
+document.addEventListener('keydown', (e) => {
+  const typing = e.target instanceof Element && e.target.closest('input, select, textarea');
+  if (!state.watching || typing || document.querySelector('dialog[open]')) return;
+  if (e.key === 'm' || e.key === 'M') toggleScreenMute();
+  else if (e.key === 'ArrowUp') setScreenVolume(Number($('screen-volume').value) + 0.1);
+  else if (e.key === 'ArrowDown') setScreenVolume(Number($('screen-volume').value) - 0.1);
+  else return;
+  e.preventDefault();
+  if (document.fullscreenElement) showScreenControls();
 });
 
 $('settings-close').addEventListener('click', () => $('settings-dialog').close());
@@ -2338,7 +2385,10 @@ document.addEventListener('fullscreenchange', () => {
   // Em tela cheia só o elemento da tela aparece: a fileira de bonecos vai
   // junto pra dentro dele (o mesmo nó, então aura e balanço seguem iguais).
   const stage = document.querySelector('.stage');
-  if (fs === $('screen-view')) $('screen-seats-row').append($('seats'));
+  if (fs === $('screen-view')) {
+    $('screen-seats-row').append($('seats'));
+    showScreenControls();
+  }
   else if ($('seats').parentElement !== stage) stage.insertBefore($('seats'), stage.querySelector('.dock'));
 });
 

@@ -69,9 +69,12 @@
       <section id="screen-view" class="screen-view" hidden>
         <div class="screen-bar">
           <span id="screen-label"></span>
-          <label class="screen-vol" title="Volume da tela">🔊
-            <input id="screen-volume" type="range" min="0" max="1" step="0.05" value="1">
-          </label>
+          <div class="screen-vol">
+            <button id="screen-mute" class="ghost icon" type="button" title="Mutar a tela (M)">
+              <svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/><path class="slash" d="M16 9l6 6M22 9l-6 6"/></svg>
+            </button>
+            <input id="screen-volume" type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume da tela">
+          </div>
           <button id="screen-full" class="ghost icon" type="button" title="Tela cheia (ou duplo clique)">⛶</button>
           <button id="screen-close" class="ghost icon" type="button" title="Voltar pro chat">✕</button>
         </div>
