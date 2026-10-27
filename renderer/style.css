@@ -242,6 +242,26 @@ button.chip:disabled { opacity: 1; }
 .screen-box video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .screen-view:fullscreen { inset: 0; border: none; border-radius: 0; }
 
+/* Tela cheia: a galera aparece em miniatura embaixo do vídeo (dá pra esconder). */
+.screen-seats { display: none; }
+.screen-view:fullscreen .screen-seats {
+  display: flex; justify-content: center; position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 4vh 0 1vh; pointer-events: none;
+  background: linear-gradient(to top, rgba(0, 0, 0, .8), rgba(0, 0, 0, .45) 60%, transparent);
+}
+.screen-view.hide-seats .screen-seats { display: none !important; }
+/* Tamanho pela altura da tela: fica proporcional em 1080p, 1440p ou 4K. */
+.screen-seats .seats { position: static; padding: 0; gap: 1.2vh; overflow: visible; }
+.screen-seats .seat { width: 12vh; padding-top: 1.8vh; }
+.screen-seats .seat svg.avatar-seat { width: 12vh; height: 15vh; }
+.screen-seats .seat .aura { width: 14.5vh; height: 3.2vh; bottom: 2.4vh; }
+.screen-seats .seat .ring { width: 13vh; height: 2.4vh; bottom: 2.7vh; }
+.screen-seats .seat .tag { font-size: 1.5vh; padding: 0 .9vh; }
+.screen-seats .badge { font-size: 1vh; }
+.screen-seats .seat .vol { display: none; }
+.screen-view:not(:fullscreen) #screen-seats-toggle { display: none; }
+#screen-seats-toggle.off { opacity: .45; }
+
 /* ---------- Cadeiras ---------- */
 
 .stage { height: 288px; flex: none; position: relative; }

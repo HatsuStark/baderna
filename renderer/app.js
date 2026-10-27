@@ -1798,5 +1798,23 @@ $('close-to-tray').addEventListener('change', () => {
 });
 
 document.addEventListener('fullscreenchange', () => {
-  document.body.classList.toggle('is-fullscreen', !!document.fullscreenElement);
+  const fs = document.fullscreenElement;
+  document.body.classList.toggle('is-fullscreen', !!fs);
+  // Em tela cheia só o elemento da tela aparece: a fileira de bonecos vai
+  // junto pra dentro dele (o mesmo nó, então aura e balanço seguem iguais).
+  const stage = document.querySelector('.stage');
+  if (fs === $('screen-view')) $('screen-seats').append($('seats'));
+  else if ($('seats').parentElement !== stage) stage.insertBefore($('seats'), stage.querySelector('.dock'));
+});
+
+function setFullscreenSeatsHidden(hide) {
+  $('screen-view').classList.toggle('hide-seats', hide);
+  $('screen-seats-toggle').classList.toggle('off', hide);
+  $('screen-seats-toggle').title = hide ? 'Mostrar a galera' : 'Esconder a galera';
+}
+setFullscreenSeatsHidden(loadPref('fsSeats') === 'hide');
+$('screen-seats-toggle').addEventListener('click', () => {
+  const hide = !$('screen-view').classList.contains('hide-seats');
+  setFullscreenSeatsHidden(hide);
+  savePref('fsSeats', hide ? 'hide' : 'show');
 });

@@ -79,6 +79,39 @@ const KITS = {
     draw: (a, t) => area('#b6ff3b') + `<path d="M0 80 H52 L34 180 H0 Z M160 80 H108 L126 180 H160 Z" fill="#212529"/>`
       + range(40, 120, 16).map((x) => `<path d="M${x} ${t + 36} l8 -7 l8 7" fill="none" stroke="#212529" stroke-width="2.5"/>`).join(''),
   },
+  'alvirrubra': {
+    main: '#d1001f', swatch: 'repeating-linear-gradient(90deg, #d1001f 0 6px, #f8f9fa 6px 12px)',
+    draw: () => area('#f8f9fa') + range(10, 150, 14).map((x) => `<rect x="${x}" y="80" width="7" height="100" fill="#d1001f"/>`).join(''),
+  },
+  'alvinegra horizontal': {
+    main: '#212529', swatch: 'repeating-linear-gradient(0deg, #111 0 5px, #f8f9fa 5px 10px)',
+    draw: () => area('#f8f9fa') + range(86, 170, 12).map((y) => `<rect x="0" y="${y}" width="160" height="6" fill="#111"/>`).join(''),
+  },
+  'alviverde vertical': {
+    main: '#0b6b3a', swatch: 'repeating-linear-gradient(90deg, #0b6b3a 0 6px, #f8f9fa 6px 12px)',
+    draw: () => area('#f8f9fa') + range(10, 150, 14).map((x) => `<rect x="${x}" y="80" width="7" height="100" fill="#0b6b3a"/>`).join(''),
+  },
+  'verde e amarela listrada': {
+    main: '#2f9e44', swatch: 'repeating-linear-gradient(90deg, #2f9e44 0 6px, #ffd43b 6px 12px)',
+    draw: () => area('#ffd43b') + range(10, 150, 14).map((x) => `<rect x="${x}" y="80" width="7" height="100" fill="#2f9e44"/>`).join(''),
+  },
+  'meio a meio': {
+    main: '#d1001f', swatch: 'linear-gradient(90deg, #d1001f 0 50%, #111 50%)',
+    draw: () => area('#111') + '<rect x="0" y="80" width="80" height="100" fill="#d1001f"/>',
+  },
+  'branca faixa verde': {
+    main: '#0b6b3a', swatch: 'linear-gradient(#f8f9fa 0 38%, #0b6b3a 38% 62%, #f8f9fa 62%)',
+    draw: (a, t) => area('#f8f9fa') + `<rect x="0" y="${t + 14}" width="160" height="14" fill="#0b6b3a"/>`,
+  },
+  'branca clássica': {
+    main: '#212529', swatch: 'linear-gradient(#111 0 12%, #f8f9fa 12%)',
+    draw: (a, t) => area('#f8f9fa') + `<path d="M66 ${t} L80 ${t + 14} L94 ${t}" fill="none" stroke="#111" stroke-width="5"/>
+      <path d="M0 ${t + 2} H160" stroke="#111" stroke-width="4"/>`,
+  },
+  'faixa diagonal vermelha': {
+    main: '#d1001f', swatch: 'linear-gradient(135deg, #f8f9fa 0 40%, #d1001f 40% 60%, #f8f9fa 60%)',
+    draw: (a, t) => area('#f8f9fa') + `<path d="M30 ${t - 4} L56 ${t - 4} L140 ${t + 52} L140 180 L110 180 Z" fill="#d1001f"/>`,
+  },
 };
 
 // Tipos de corpo: formato do tronco, mãos e ajuste da cabeça (escala e
