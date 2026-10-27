@@ -405,6 +405,13 @@ dialog .row:first-of-type { margin-top: 0; }
 .face-thumb { width: 64px; height: 64px; flex: none !important; border-radius: 14px; overflow: hidden; background: #23232b; border: 1px solid var(--line); }
 .face-thumb svg { width: 100%; height: 100%; display: block; }
 
+.awards { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 4px; min-width: 380px; }
+.award { display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 14px; background: rgba(255, 255, 255, .04); border: 1px solid var(--line); }
+.award > div:last-child { display: flex; flex-direction: column; gap: 1px; }
+.award b { font-family: var(--marker); font-weight: 400; font-size: 18px; color: var(--cyan); letter-spacing: .4px; }
+.award span { font-weight: 700; }
+.award small { color: var(--muted); }
+
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .theme-grid button { padding: 6px; display: flex; flex-direction: column; gap: 6px; text-align: left; font-weight: 600; }
 .theme-grid svg { width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; display: block; }

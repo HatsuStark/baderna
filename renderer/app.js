@@ -43,6 +43,39 @@ const UPLOAD_HEADROOM = 0.8;      // usa só 80% do upload informado
 
 const NAME_COLORS = ['#19f0ff', '#ff2bd6', '#b6ff3b', '#ffb627', '#ff8a3d', '#a78bfa', '#4dd4ac'];
 
+// Narrador da resenha: cada aviso sorteia uma frase. {n} nome, {b} nome
+// antigo, {c} código da sala, {t} tema.
+const NARRATION = {
+  arrived: [
+    '{n} chegou chutando a porta.', '{n} brotou na resenha.', '{n} entrou sem pedir licença.',
+    'Olha quem apareceu: {n}.', '{n} chegou fora de hora, como sempre.', '{n} caiu de paraquedas na baderna.',
+    'Segura que {n} chegou.', '{n} entrou igual reforço de janela.',
+  ],
+  left: [
+    '{n} vazou.', '{n} foi comprar cigarro.', '{n} meteu o pé.', '{n} saiu de fininho (mas a gente viu).',
+    '{n} pediu pra sair. Fraco.', '{n} foi dormir, amanhã tem trampo.', '{n} deu rage quit.',
+  ],
+  dropped: [
+    '{n} caiu igual cone.', 'A internet de {n} pediu arrego.', '{n} sumiu igual sinal de 3G no túnel.',
+    '{n} caiu. Culpa do roteador, segundo a pessoa.', '{n} desconectou. O gato deve ter puxado o cabo.',
+  ],
+  created: [
+    'Sala {c} aberta. Manda o código pra galera!', 'Baderna {c} no ar. Chama a galera!',
+    'Você abriu a {c}. Agora é esperar o pessoal (que sempre atrasa).',
+  ],
+  entered: ['Você entrou na sala {c}.', 'Você brotou na {c}. Fala aí!', 'Você chegou na {c} chutando a porta.'],
+  newHost: ['{n} agora é o dono da bola.', '{n} pegou a faixa de capitão.', '{n} virou host. Respeita.'],
+  meHost: ['Você agora é o dono da bola.', 'A faixa de capitão é sua: você é o host.'],
+  hostGone: ['O dono da bola foi embora. Pegando a bola…', 'O host vazou. Assumindo a sala…'],
+  renamed: ['{b} agora atende por {n}.', '{b} trocou de nome: agora é {n}.'],
+  theme: ['{n} mudou o tema pra {t}.', '{n} redecorou: agora é {t}.', '{n} trocou o cenário pra {t}.'],
+};
+
+function narrate(kind, vars = {}) {
+  const list = NARRATION[kind];
+  return list[Math.floor(Math.random() * list.length)].replace(/\{(\w)\}/g, (_, k) => vars[k] ?? '');
+}
+
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -76,6 +109,10 @@ const state = {
   lastChat: null,     // { author, time, el } pra agrupar mensagens seguidas
   codecOrder: null,   // preferência de codec de vídeo desta máquina (medida uma vez)
   codecOrderPromise: null,
+  stats: new Map(),   // prêmios da resenha: nome -> contadores
+  statsTimer: 0,
+  sessionStart: 0,
+  lastTick: 0,
 };
 
 // ---------- PeerJS helpers ----------
@@ -192,11 +229,13 @@ function joinViaBeacon() {
 
 async function leave() {
   state.leaving = true;
+  const awards = computeAwards();
   broadcast({ type: 'bye' });
   await sleep(200); // deixa o "bye" sair antes de fechar tudo
   await teardown();
   showLobby();
   startPreview();
+  if (awards) showAwards(awards);
 }
 
 async function teardown() {
@@ -209,6 +248,7 @@ async function teardown() {
   destroyPeer(state.mainPeer);
   state.localStream?.getTracks().forEach((t) => t.stop());
   cancelAnimationFrame(state.rafId);
+  clearInterval(state.statsTimer);
   for (const id of [...state.meters.keys()]) removeMeter(id);
   await state.audioCtx?.close().catch(() => {});
 
@@ -265,18 +305,18 @@ function handleHostLeft() {
   state.hostId = candidates[0].id;
   renderAll();
   if (state.hostId === state.myId) claimBeaconWithRetry();
-  else addSystem(`${state.members.get(state.hostId)?.name ?? 'Alguém'} agora é o host.`);
+  else addSystem(narrate('newHost', { n: state.members.get(state.hostId)?.name ?? 'Alguém' }));
 }
 
 async function claimBeaconWithRetry() {
-  addSystem('O host saiu. Assumindo a sala…');
+  addSystem(narrate('hostGone'));
   // O servidor do PeerJS pode demorar pra liberar o ID se o host caiu sem fechar.
   for (let i = 0; i < BEACON_MAX_TRIES; i++) {
     if (!state.mainPeer || state.hostId !== state.myId) return;
     try {
       if (await tryClaimBeacon()) {
         becomeHost();
-        addSystem('Você agora é o host.');
+        addSystem(narrate('meHost'));
         return;
       }
     } catch (err) {
@@ -298,7 +338,7 @@ function wireMainPeer() {
     const member = upsertMember(conn.peer, { name, seq, avatar });
     attachConn(member, conn);
     // Só anuncia quem chegou depois de mim; o resto já estava aqui.
-    if (isNew && Number(seq) > state.seq) addSystem(`${member.name} chegou na baderna.`);
+    if (isNew && Number(seq) > state.seq) addSystem(narrate('arrived', { n: member.name }));
   });
 
   peer.on('call', (call) => {
@@ -401,7 +441,7 @@ function handleMessage(member, msg) {
     case 'profile': {
       const before = member.name;
       upsertMember(member.id, { name: msg.name, avatar: msg.avatar, muted: msg.muted, deaf: msg.deaf });
-      if (before !== '…' && before !== member.name) addSystem(`${before} agora é ${member.name}.`);
+      if (before !== '…' && before !== member.name) addSystem(narrate('renamed', { b: before, n: member.name }));
       break;
     }
     case 'chat':
@@ -411,7 +451,7 @@ function handleMessage(member, msg) {
       // Só o host manda no tema.
       if (member.id === state.hostId && THEMES[msg.theme] && msg.theme !== state.theme) {
         applyTheme(msg.theme);
-        addSystem(`${member.name} mudou o tema pra ${THEMES[msg.theme].name}.`);
+        addSystem(narrate('theme', { n: member.name, t: THEMES[msg.theme].name }));
       }
       break;
     case 'host':
@@ -423,12 +463,13 @@ function handleMessage(member, msg) {
       closeScreenIn(member);
       break;
     case 'bye':
-      removeMember(member.id);
+      removeMember(member.id, 'bye');
       break;
   }
 }
 
-function removeMember(id) {
+// reason 'bye': saiu pelo botão; sem reason: a conexão caiu.
+function removeMember(id, reason) {
   const m = state.members.get(id);
   if (!m) return;
   state.members.delete(id);
@@ -443,7 +484,8 @@ function removeMember(id) {
   removeMeter(id);
   updateCount();
   if (state.leaving) return;
-  addSystem(`${m.name} saiu.`);
+  if (reason !== 'bye') statOf(m.name).drops++;
+  addSystem(narrate(reason === 'bye' ? 'left' : 'dropped', { n: m.name }));
   if (id === state.hostId) handleHostLeft();
 }
 
@@ -461,6 +503,7 @@ function sendChat(e) {
 function addChat(authorId, name, avatar, rawText) {
   const text = String(rawText).slice(0, CHAT_MAX);
   const now = Date.now();
+  statOf(name).chats++;
   const last = state.lastChat;
   const grouped = last && last.author === authorId && now - last.time < CHAT_GROUP_MS;
 
@@ -510,6 +553,97 @@ function nameColor(id) {
   let h = 0;
   for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return NAME_COLORS[h % NAME_COLORS.length];
+}
+
+// ---------- Prêmios da resenha ----------
+// Cada um conta o que vê da própria máquina, por nome: quem cai e volta
+// ganha outro ID, mas continua sendo a mesma pessoa pra zoeira.
+
+const STATS_SAMPLE_MS = 1000;
+const AWARDS_MIN_SESSION_MS = 60_000;
+
+const AWARDS = [
+  { key: 'talk', icon: '🗣️', title: 'Tagarela da Noite', min: 30_000, text: (v) => `falou ${formatDuration(v)}` },
+  { key: 'muted', icon: '🧘', title: 'Monge do Mute', min: 60_000, text: (v) => `${formatDuration(v)} no mudo` },
+  { key: 'chats', icon: '⌨️', title: 'Dedo Nervoso', min: 5, text: (v) => `${v} mensagens no chat` },
+  { key: 'share', icon: '📽️', title: 'Projetor Humano', min: 60_000, text: (v) => `${formatDuration(v)} de telão` },
+  { key: 'host', icon: '👑', title: 'Dono da Bola', min: 60_000, text: (v) => `${formatDuration(v)} de host` },
+  { key: 'drops', icon: '🚧', title: 'Cone da Rodada', min: 1, text: (v) => (v === 1 ? 'caiu 1 vez' : `caiu ${v} vezes`) },
+];
+
+function statOf(name) {
+  let s = state.stats.get(name);
+  if (!s) {
+    s = { talk: 0, muted: 0, chats: 0, share: 0, host: 0, drops: 0, present: 0, avatar: null };
+    state.stats.set(name, s);
+  }
+  return s;
+}
+
+function sampleStats() {
+  const people = [
+    { name: state.name, avatar: state.avatar, muted: state.muted || state.deaf, sharing: !!state.screen, host: state.hostId === state.myId },
+    ...[...state.members.values()].filter((m) => m.name !== '…').map((m) => ({
+      name: m.name, avatar: m.avatar, muted: m.muted || m.deaf, sharing: state.screens.has(m.id), host: state.hostId === m.id,
+    })),
+  ];
+  for (const p of people) {
+    const s = statOf(p.name);
+    s.avatar = p.avatar;
+    s.present += STATS_SAMPLE_MS;
+    if (p.muted) s.muted += STATS_SAMPLE_MS;
+    if (p.sharing) s.share += STATS_SAMPLE_MS;
+    if (p.host) s.host += STATS_SAMPLE_MS;
+  }
+}
+
+function computeAwards() {
+  const duration = Date.now() - state.sessionStart;
+  const people = [...state.stats].filter(([name]) => name !== '…');
+  if (!state.sessionStart || duration < AWARDS_MIN_SESSION_MS || people.length < 2) return null;
+  const awards = [];
+  for (const a of AWARDS) {
+    const [name, s] = people.reduce((best, cur) => (cur[1][a.key] > best[1][a.key] ? cur : best));
+    if (s[a.key] >= a.min) awards.push({ icon: a.icon, title: a.title, name, avatar: s.avatar, text: a.text(s[a.key]) });
+  }
+  // Quem ficou a resenha quase toda de mic aberto e quase não falou.
+  const talkers = people.filter(([, s]) => s.present >= 120_000 && s.muted < s.present / 2);
+  if (talkers.length >= 3) {
+    const loudest = Math.max(...talkers.map(([, s]) => s.talk));
+    const [name, s] = talkers.reduce((best, cur) => (cur[1].talk < best[1].talk ? cur : best));
+    if (s.talk < loudest / 4) awards.push({ icon: '🗿', title: 'Estátua de Praça', name, avatar: s.avatar, text: `falou só ${formatDuration(s.talk)}` });
+  }
+  return awards.length ? { duration, awards } : null;
+}
+
+function showAwards({ duration, awards }) {
+  $('awards-sub').textContent = `Resenha de ${formatDuration(duration)}. Os vencedores da noite:`;
+  $('awards-list').replaceChildren(...awards.map((a) => {
+    const row = document.createElement('div');
+    row.className = 'award';
+    const face = document.createElement('div');
+    face.className = 'face-thumb';
+    face.innerHTML = avatarFaceSvg(a.avatar); // SVG sanitizado em avatar.js
+    const text = document.createElement('div');
+    const title = document.createElement('b');
+    title.textContent = `${a.icon} ${a.title}`;
+    const who = document.createElement('span');
+    who.textContent = a.name;
+    const detail = document.createElement('small');
+    detail.textContent = a.text;
+    text.append(title, who, detail);
+    row.append(face, text);
+    return row;
+  }));
+  $('awards-dialog').showModal();
+}
+
+function formatDuration(ms) {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
 }
 
 // ---------- Tema da sala ----------
@@ -1207,6 +1341,8 @@ function swayHead(seat, meter, speaking, now) {
 
 function tick() {
   const now = performance.now();
+  const dt = Math.min(200, now - (state.lastTick || now));
+  state.lastTick = now;
   for (const [id, meter] of state.meters) {
     meter.analyser.getFloatTimeDomainData(meter.buf);
     let sum = 0;
@@ -1216,6 +1352,7 @@ function tick() {
     // Segura a boca aberta um pouco pra não piscar entre sílabas.
     const speaking = now - meter.lastLoud < SPEAKING_HOLD_MS;
     const seat = id === state.myId ? state.selfSeat : state.members.get(id)?.seat;
+    if (speaking && state.mainPeer) statOf(id === state.myId ? state.name : state.members.get(id)?.name ?? '…').talk += dt;
     seat?.classList.toggle('speaking', speaking);
     seat?.classList.toggle('loud', now - meter.lastLoud < MOUTH_HOLD_MS);
     if (seat) swayHead(seat, meter, speaking, now);
@@ -1564,6 +1701,9 @@ function openSettings(inRoom) {
 // ---------- Telas (lobby/sala) ----------
 
 function showRoom() {
+  state.stats = new Map();
+  state.sessionStart = Date.now();
+  state.statsTimer = setInterval(sampleStats, STATS_SAMPLE_MS);
   state.selfSeat = createSeat(null);
   addMeter(state.myId, state.localStream);
   $('room-code').textContent = state.room;
@@ -1576,9 +1716,7 @@ function showRoom() {
   sortSeats();
   $('lobby').hidden = true;
   $('room-view').hidden = false;
-  addSystem(state.hostId === state.myId
-    ? `Sala ${state.room} criada. Manda o código pra galera!`
-    : `Você entrou na sala ${state.room}.`);
+  addSystem(narrate(state.hostId === state.myId ? 'created' : 'entered', { c: state.room }));
   $('chat-input').focus();
 }
 
@@ -1790,6 +1928,7 @@ $('screen-volume').addEventListener('input', () => {
 });
 
 $('settings-close').addEventListener('click', () => $('settings-dialog').close());
+$('awards-close').addEventListener('click', () => $('awards-dialog').close());
 $('edit-avatar-room').addEventListener('click', openAvatarEditor);
 $('avatar-random').addEventListener('click', () => {
   avatarDraft = randomAvatar();
