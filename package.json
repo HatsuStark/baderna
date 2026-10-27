@@ -1,0 +1,18 @@
+{
+  "name": "baderna",
+  "productName": "Baderna",
+  "version": "0.1.0",
+  "description": "Baderna: voz e tela P2P entre amigos",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "start:2": "electron . --profile=2"
+  },
+  "dependencies": {
+    "peerjs": "^1.5.4"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0"
+  }
+}

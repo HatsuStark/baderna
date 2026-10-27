@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src https://*.peerjs.com wss://*.peerjs.com">
+  <title>Baderna</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <section id="lobby" class="card">
+    <h1>Baderna</h1>
+    <label>Seu nome
+      <input id="name" maxlength="24" placeholder="ex: Jeff">
+    </label>
+    <label>Código da sala
+      <div class="row">
+        <input id="room" maxlength="32" placeholder="ex: k7f2-p9qx">
+        <button id="gen" type="button" title="Gerar código aleatório">🎲</button>
+      </div>
+    </label>
+    <label>Microfone
+      <select id="mic"></select>
+      <div class="meter" title="Fale pra testar"><div id="mic-level"></div></div>
+    </label>
+    <label>Saída de som
+      <select id="speaker"></select>
+    </label>
+    <button id="join" class="primary">Entrar</button>
+    <p id="lobby-status" class="status"></p>
+  </section>
+
+  <section id="room-view" hidden>
+    <header>
+      <div>
+        <strong id="room-title"></strong>
+        <span id="role" class="badge"></span>
+      </div>
+      <div class="controls">
+        <button id="mute">🎤 Mutar</button>
+        <button id="leave" class="danger">Sair</button>
+      </div>
+    </header>
+    <ul id="members"></ul>
+    <p id="room-status" class="status"></p>
+  </section>
+
+  <script src="../node_modules/peerjs/dist/peerjs.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
