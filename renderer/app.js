@@ -24,6 +24,13 @@ const SHARE_PRESETS = {
 };
 const SCREEN_AUDIO_BITRATE = 128_000;
 
+// Bitrate pra mesma qualidade, relativo ao VP8 (base dos presets acima).
+const CODEC_EFFICIENCY = { AV1: 0.55, H265: 0.6, VP9: 0.65, H264: 0.85, VP8: 1 };
+const CODEC_FALLBACK_ORDER = ['AV1', 'H265', 'VP9', 'H264', 'VP8'];
+const MIN_SCREEN_BITRATE = 300_000;
+const VOICE_RESERVE_BPS = 50_000; // por pessoa: voz Opus + overhead
+const UPLOAD_HEADROOM = 0.8;      // usa só 80% do upload informado
+
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -47,7 +54,9 @@ const state = {
   rafId: 0,
   preview: null,      // teste de microfone no lobby: { stream, ctx, raf }
   previewToken: 0,
-  screen: null,       // minha tela compartilhada: { stream, preset, mode, audio }
+  screen: null,       // minha tela compartilhada: { stream, preset, mode, audio, codecs }
+  codecOrder: null,   // preferência de codec de vídeo desta máquina (medida uma vez)
+  codecOrderPromise: null,
 };
 
 // ---------- PeerJS helpers ----------
@@ -120,6 +129,7 @@ async function join() {
     }
     showRoom();
     setLobbyStatus('');
+    ensureCodecOrder(); // mede em segundo plano; precisa do mic aberto pras stats
   } catch (err) {
     console.error(err);
     setLobbyStatus(describeError(err));
@@ -259,7 +269,9 @@ function wireMainPeer() {
   peer.on('call', (call) => {
     const member = upsertMember(call.peer, {});
     if (call.metadata?.kind === 'screen') {
-      call.answer(undefined, { sdpTransform: opusStereo }); // só recebe
+      // Só recebe. Responde na ordem de codec de quem manda: é a ordem da resposta que vale.
+      const codecs = sanitizeCodecOrder(call.metadata.codecs);
+      call.answer(undefined, { sdpTransform: (sdp) => opusStereo(preferVideoCodecs(sdp, codecs)) });
       attachScreenIn(member, call);
       return;
     }
@@ -388,6 +400,9 @@ async function openSharePicker() {
   $('share-quality').value = loadPref('shareQuality') || '1080p30';
   $('share-mode').value = loadPref('shareMode') || 'motion';
   $('share-audio').checked = loadPref('shareAudio') !== 'off';
+  $('share-upload').value = loadPref('uploadMbps');
+  updateShareEstimate();
+  ensureCodecOrder().then(updateShareEstimate);
   $('sources').textContent = 'Carregando…';
   dialog.showModal();
 
@@ -501,9 +516,209 @@ function opusStereo(sdp) {
     `a=fmtp:${pt} ${params};stereo=1;sprop-stereo=1;maxaveragebitrate=${SCREEN_AUDIO_BITRATE}`);
 }
 
+// ---------- Codec de vídeo ----------
+
+// Põe os codecs de vídeo da m-line na ordem pedida; o primeiro que os dois
+// lados suportam é o usado. Codecs auxiliares (rtx, red, ulpfec) vão pro fim.
+function preferVideoCodecs(sdp, order) {
+  const lines = sdp.split('\r\n');
+  const start = lines.findIndex((l) => l.startsWith('m=video'));
+  if (start < 0) return sdp;
+  let end = lines.findIndex((l, i) => i > start && l.startsWith('m='));
+  if (end < 0) end = lines.length;
+
+  const codecOf = {};
+  for (const l of lines.slice(start, end)) {
+    const m = /^a=rtpmap:(\d+) ([\w-]+)\//.exec(l);
+    if (m) codecOf[m[1]] = m[2].toUpperCase();
+  }
+  const rank = (pt) => {
+    const i = order.indexOf(codecOf[pt]);
+    return i < 0 ? order.length : i;
+  };
+  const [media, port, proto, ...pts] = lines[start].split(' ');
+  lines[start] = [media, port, proto, ...pts.sort((a, b) => rank(a) - rank(b))].join(' ');
+  return lines.join('\r\n');
+}
+
+function sanitizeCodecOrder(list) {
+  const known = Array.isArray(list) ? list.filter((c) => CODEC_FALLBACK_ORDER.includes(c)) : [];
+  return [...new Set([...known, ...CODEC_FALLBACK_ORDER])];
+}
+
+// Melhor codec com encoder na placa; sem placa, VP9 por software (se a CPU
+// aguentar) ou H.264 na placa.
+function videoCodecOrder(hw) {
+  const first = ['AV1', 'H265'].find((c) => hw[c])
+    ?? (navigator.hardwareConcurrency >= 8 || !hw.H264 ? 'VP9' : 'H264');
+  return sanitizeCodecOrder([first]);
+}
+
+function ensureCodecOrder() {
+  state.codecOrderPromise ??= probeHardwareEncoders()
+    .catch((err) => {
+      console.warn('probeHardwareEncoders', err);
+      return {};
+    })
+    .then((hw) => (state.codecOrder = videoCodecOrder(hw)));
+  return state.codecOrderPromise;
+}
+
+// mediaCapabilities.powerEfficient não é confiável no Electron, então mede:
+// codifica um canvas numa conexão local e olha powerEfficientEncoder nas
+// stats (só aparece com captura ativa, por isso roda com o mic aberto).
+async function probeHardwareEncoders() {
+  const key = `hwEncoders:${navigator.userAgent}`;
+  const cached = loadPref(key);
+  if (cached) {
+    try { return JSON.parse(cached); } catch {}
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1280;
+  canvas.height = 720;
+  const g = canvas.getContext('2d');
+  let n = 0;
+  const timer = setInterval(() => {
+    g.fillStyle = `hsl(${(n++ * 10) % 360}, 70%, 50%)`;
+    g.fillRect(0, 0, canvas.width, canvas.height);
+  }, 33);
+  const track = canvas.captureStream(30).getVideoTracks()[0];
+  const caps = RTCRtpSender.getCapabilities('video')?.codecs ?? [];
+
+  const result = {};
+  let measured = false;
+  try {
+    for (const name of ['AV1', 'H265', 'H264']) {
+      const prefs = caps.filter((c) => c.mimeType.toUpperCase() === `VIDEO/${name}`);
+      if (!prefs.length) continue;
+      const hw = await encodesInHardware(track, prefs);
+      if (hw !== undefined) measured = true;
+      result[name] = !!hw;
+    }
+  } finally {
+    clearInterval(timer);
+    track.stop();
+  }
+  if (measured) savePref(key, JSON.stringify(result));
+  return result;
+}
+
+async function encodesInHardware(track, codecPrefs) {
+  const a = new RTCPeerConnection();
+  const b = new RTCPeerConnection();
+  try {
+    a.onicecandidate = (e) => e.candidate && b.addIceCandidate(e.candidate);
+    b.onicecandidate = (e) => e.candidate && a.addIceCandidate(e.candidate);
+    a.addTransceiver(track, { direction: 'sendonly' }).setCodecPreferences(codecPrefs);
+    await a.setLocalDescription();
+    await b.setRemoteDescription(a.localDescription);
+    await b.setLocalDescription();
+    await a.setRemoteDescription(b.localDescription);
+    for (let i = 0; i < 10; i++) {
+      await sleep(300);
+      let hw;
+      (await a.getStats()).forEach((s) => {
+        if (s.type === 'outbound-rtp' && s.powerEfficientEncoder !== undefined) hw = s.powerEfficientEncoder;
+      });
+      if (hw !== undefined) return hw;
+    }
+    return undefined;
+  } finally {
+    a.close();
+    b.close();
+  }
+}
+
+// ---------- Orçamento de upload ----------
+
+function uploadBudgetBps() {
+  const mbps = Number(loadPref('uploadMbps'));
+  return mbps > 0 ? mbps * 1e6 : 0;
+}
+
+// Quanto cada pessoa assistindo recebe. Sem limite de upload, vai o ideal do
+// preset ajustado pelo codec; com limite, divide o que sobra depois da voz.
+function screenBitrate({ preset, codec, viewers, withAudio, budget }) {
+  const ideal = preset.maxBitrate * (CODEC_EFFICIENCY[codec] ?? 1);
+  if (!budget) return { perViewer: Math.round(ideal), limited: false };
+  const voice = VOICE_RESERVE_BPS * Math.max(1, state.members.size);
+  const share = (budget * UPLOAD_HEADROOM - voice) / Math.max(1, viewers) - (withAudio ? SCREEN_AUDIO_BITRATE : 0);
+  const perViewer = Math.round(Math.max(MIN_SCREEN_BITRATE, Math.min(ideal, share)));
+  return { perViewer, limited: perViewer < ideal };
+}
+
+const mbps = (bps) => (bps / 1e6).toFixed(1).replace('.', ',');
+
+// Recalcula o bitrate de cada cópia da tela. Roda quando alguém começa a
+// receber ou para; assim quem entra/sai redistribui o upload.
+async function retuneScreen() {
+  const screen = state.screen;
+  if (!screen) return;
+  const pcs = [...state.members.values()]
+    .map((m) => m.screenOut?.peerConnection)
+    .filter((pc) => pc?.connectionState === 'connected');
+  const viewers = [...state.members.values()].filter((m) => m.screenOut).length;
+  const budget = uploadBudgetBps();
+  const codecs = new Set();
+  let total = 0;
+
+  for (const pc of pcs) {
+    for (const sender of pc.getSenders()) {
+      const params = sender.getParameters();
+      if (!params.encodings?.length) continue;
+      if (sender.track?.kind === 'audio') {
+        params.encodings[0].maxBitrate = SCREEN_AUDIO_BITRATE;
+        await sender.setParameters(params).catch((err) => console.warn('setParameters audio', err));
+        continue;
+      }
+      if (sender.track?.kind !== 'video') continue;
+      const codec = params.codecs?.[0]?.mimeType.split('/')[1]?.toUpperCase() ?? 'VP8';
+      codecs.add(codec);
+      const { perViewer } = screenBitrate({ preset: screen.preset, codec, viewers, withAudio: !!screen.audio, budget });
+      total += perViewer;
+      params.encodings[0].maxBitrate = perViewer;
+      params.encodings[0].maxFramerate = screen.preset.frameRate;
+      params.degradationPreference = screen.mode === 'motion' ? 'maintain-framerate' : 'maintain-resolution';
+      try {
+        await sender.setParameters(params);
+      } catch {
+        delete params.degradationPreference;
+        await sender.setParameters(params).catch((err) => console.warn('setParameters', err));
+      }
+    }
+  }
+
+  if (state.screen !== screen) return;
+  const info = pcs.length
+    ? ` · ${[...codecs].join('/')} · ${pcs.length} × ${mbps(total / pcs.length)} Mbps = ${mbps(total)} Mbps`
+    : '';
+  setScreenLabel(state.myId, `${state.name} (você)${info}`);
+}
+
+function updateShareEstimate() {
+  const viewers = state.members.size;
+  if (!viewers) {
+    $('share-estimate').textContent = 'Ninguém na sala pra assistir ainda.';
+    return;
+  }
+  const preset = SHARE_PRESETS[$('share-quality').value];
+  const codec = state.codecOrder?.[0] ?? 'VP9';
+  const budgetMbps = Number($('share-upload').value);
+  const budget = budgetMbps > 0 ? budgetMbps * 1e6 : 0;
+  const withAudio = $('share-audio').checked;
+  const { perViewer, limited } = screenBitrate({ preset, codec, viewers, withAudio, budget });
+  const total = (perViewer + (withAudio ? SCREEN_AUDIO_BITRATE : 0)) * viewers;
+  $('share-estimate').textContent =
+    `${viewers} assistindo × ${mbps(perViewer)} Mbps ≈ ${mbps(total)} Mbps de upload · codec ${codec}`
+    + (budget ? ` · limite ${mbps(budget * UPLOAD_HEADROOM)} de ${budgetMbps} Mbps` : ' · sem limite')
+    + (limited ? ' · qualidade reduzida pelo limite' : '');
+}
+
 // Separado do seletor pra dar pra testar com qualquer stream de vídeo.
 async function beginShare(stream, presetKey, mode, audio = null) {
   stopShare();
+  const codecs = await ensureCodecOrder();
   const preset = SHARE_PRESETS[presetKey] ?? SHARE_PRESETS['1080p30'];
   const track = stream.getVideoTracks()[0];
   track.contentHint = mode;
@@ -519,7 +734,7 @@ async function beginShare(stream, presetKey, mode, audio = null) {
   // Usuário pode parar pelo próprio sistema (ou a janela fechar).
   track.addEventListener('ended', stopShare);
 
-  state.screen = { stream, preset, mode, audio };
+  state.screen = { stream, preset, mode, audio, codecs };
   for (const m of state.members.values()) sendScreenTo(m);
   showScreen(state.myId, `${state.name} (você)`, stream, false);
   updateShareButton();
@@ -544,46 +759,21 @@ function stopShare() {
 
 function sendScreenTo(member) {
   if (!state.screen || member.screenOut) return;
+  const { codecs } = state.screen;
   const call = state.mainPeer.call(member.id, state.screen.stream, {
-    metadata: { kind: 'screen' },
-    sdpTransform: opusStereo,
+    metadata: { kind: 'screen', codecs },
+    sdpTransform: (sdp) => opusStereo(preferVideoCodecs(sdp, codecs)),
   });
   if (!call) return;
   member.screenOut = call;
-  tuneScreenSender(call.peerConnection, state.screen.preset, state.screen.mode);
-  call.on('close', () => {
-    if (member.screenOut === call) member.screenOut = null;
+  const pc = call.peerConnection;
+  pc?.addEventListener('connectionstatechange', () => {
+    if (pc.connectionState === 'connected') retuneScreen();
   });
-}
-
-// Bitrate padrão do WebRTC é baixo pra tela cheia; sobe pro preset escolhido.
-function tuneScreenSender(pc, preset, mode) {
-  if (!pc) return;
-  const apply = async () => {
-    for (const sender of pc.getSenders()) {
-      if (sender.track?.kind === 'audio') {
-        const params = sender.getParameters();
-        if (!params.encodings?.length) params.encodings = [{}];
-        params.encodings[0].maxBitrate = SCREEN_AUDIO_BITRATE;
-        await sender.setParameters(params).catch((err) => console.warn('setParameters audio', err));
-        continue;
-      }
-      if (sender.track?.kind !== 'video') continue;
-      const params = sender.getParameters();
-      if (!params.encodings?.length) params.encodings = [{}];
-      params.encodings[0].maxBitrate = preset.maxBitrate;
-      params.encodings[0].maxFramerate = preset.frameRate;
-      params.degradationPreference = mode === 'motion' ? 'maintain-framerate' : 'maintain-resolution';
-      try {
-        await sender.setParameters(params);
-      } catch {
-        delete params.degradationPreference;
-        await sender.setParameters(params).catch((err) => console.warn('setParameters', err));
-      }
-    }
-  };
-  pc.addEventListener('connectionstatechange', () => {
-    if (pc.connectionState === 'connected') apply();
+  call.on('close', () => {
+    if (member.screenOut !== call) return;
+    member.screenOut = null;
+    retuneScreen();
   });
 }
 
@@ -643,9 +833,14 @@ function showScreen(id, label, stream, audible) {
     fig.addEventListener('dblclick', () => toggleFullscreen(fig));
     $('stage').append(fig);
   }
-  fig.querySelector('span').textContent = label;
+  setScreenLabel(id, label);
   fig.querySelector('video').srcObject = stream;
   $('stage').hidden = false;
+}
+
+function setScreenLabel(id, label) {
+  const fig = [...$('stage').children].find((el) => el.dataset.id === id);
+  if (fig) fig.querySelector('span').textContent = label;
 }
 
 function hideScreen(id) {
@@ -911,6 +1106,11 @@ $('mute').addEventListener('click', toggleMute);
 $('leave').addEventListener('click', leave);
 $('share').addEventListener('click', openSharePicker);
 $('share-cancel').addEventListener('click', () => $('share-dialog').close());
+$('share-upload').addEventListener('input', () => {
+  savePref('uploadMbps', $('share-upload').value);
+  updateShareEstimate();
+});
+for (const id of ['share-quality', 'share-audio']) $(id).addEventListener('change', updateShareEstimate);
 window.addEventListener('beforeunload', () => {
   broadcast({ type: 'bye' });
   destroyPeer(state.beacon);

@@ -233,6 +233,10 @@ dialog .row label { flex: 1; }
 
 .dialog-actions { display: flex; justify-content: flex-end; }
 
+dialog .row { margin-top: 12px; }
+dialog .row:first-of-type { margin-top: 0; }
+.estimate { margin-top: 8px; color: var(--text); }
+
 label.check {
   flex-direction: row;
   align-items: center;
