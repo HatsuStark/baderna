@@ -398,7 +398,17 @@ function wireMainPeer() {
 
   peer.on('disconnected', () => {
     // Caiu só o signaling; as conexões P2P continuam. Reconecta pra novos chegarem.
+    logEvent('servidor: caiu a conexão, reconectando');
     if (!peer.destroyed) peer.reconnect();
+  });
+
+  // Voltou do servidor: o que estava sendo combinado na hora da queda se
+  // perdeu; disca de novo pra quem ainda não abriu.
+  peer.on('open', () => {
+    logEvent('servidor: reconectado');
+    for (const m of state.members.values()) {
+      if (m.outgoing && !m.conn?.open && m.connAttempts < CONNECT_ATTEMPTS) redial(m, 'servidor voltou');
+    }
   });
 
   peer.on('error', (err) => {
@@ -417,11 +427,26 @@ function wireMainPeer() {
 function connectTo(id, name, seq) {
   if (id === state.myId || state.members.has(id)) return;
   const member = upsertMember(id, { name, seq });
-  attachConn(member, state.mainPeer.connect(id, {
+  member.outgoing = true; // eu disco: sou eu que tento de novo se não abrir
+  dialMember(member);
+}
+
+function dialMember(member) {
+  member.connAttempts = (member.connAttempts ?? 0) + 1;
+  attachConn(member, state.mainPeer.connect(member.id, {
     metadata: { name: state.name, seq: state.seq, avatar: state.avatar },
     reliable: true,
   }));
-  attachCall(member, state.mainPeer.call(id, state.sendStream), true);
+  attachCall(member, state.mainPeer.call(member.id, state.sendStream), true);
+}
+
+// Conexão que não abriu: quem discou tenta de novo (a combinação pelo
+// servidor do PeerJS às vezes se perde quando ele cai bem na hora).
+function redial(member, why) {
+  const old = member.conn;
+  logEvent('dados: tentando de novo', member.connAttempts + 1, why, member.name, shortId(member.id));
+  dialMember(member);
+  old?.close();
 }
 
 function upsertMember(id, { name, seq, avatar, muted, deaf }) {
@@ -456,6 +481,7 @@ function upsertMember(id, { name, seq, avatar, muted, deaf }) {
 // Conexão que não abre nesse tempo é desistida: ou a pessoa nem existe mais
 // (fantasma de quem fechou o app no meio da entrada) ou a rede bloqueou.
 const CONNECT_TIMEOUT_MS = 20_000;
+const CONNECT_ATTEMPTS = 3;
 
 function attachConn(member, conn) {
   member.conn = conn;
@@ -463,8 +489,9 @@ function attachConn(member, conn) {
   const timer = setTimeout(() => {
     if (member.conn !== conn || conn.open || state.members.get(member.id) !== member) return;
     logEvent('dados: não abriu em 20 s', member.name, shortId(member.id));
-    removeMember(member.id, 'unreachable');
-  }, CONNECT_TIMEOUT_MS);
+    if (member.outgoing && member.connAttempts < CONNECT_ATTEMPTS && state.mainPeer) redial(member, 'tempo');
+    else removeMember(member.id, 'unreachable');
+  }, member.outgoing ? CONNECT_TIMEOUT_MS : CONNECT_TIMEOUT_MS * CONNECT_ATTEMPTS);
   conn.on('data', (msg) => handleMessage(member, msg));
   conn.on('close', () => {
     if (member.conn !== conn) return;
