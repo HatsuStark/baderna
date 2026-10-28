@@ -9,7 +9,9 @@
 // Mensagens no DataChannel: profile (nome/boneco/mudo), chat, theme (só do
 // host), host, screen-stop, bye, movies (lista de filmes, em movies.js),
 // watching (quais transmissões cada um tem abertas: só essas recebem vídeo),
-// preview (foto da tela de quem transmite, a cada 4 s). Tudo que vem de fora é validado antes de
+// preview (foto da tela de quem transmite, a cada 4 s), caps (o que esta versão
+// sabe fazer), screen-live (comecei a transmitir: a chamada de vídeo só sai
+// quando alguém abre a transmissão). Tudo que vem de fora é validado antes de
 // chegar no DOM; texto sempre via textContent.
 
 const ROOM_PREFIX = 'baderna-v1-';
@@ -443,9 +445,14 @@ function attachConn(member, conn) {
     conn.send(myProfile());
     sendMoviesTo(member);
     conn.send({ type: 'watching', ids: [...state.tuned] });
-    if (state.screen && state.previews.has(state.myId)) conn.send({ type: 'preview', img: state.previews.get(state.myId) });
-    // Quem chega depois também recebe a tela que já está rolando.
-    if (state.screen) sendScreenTo(member);
+    conn.send({ type: 'caps', ondemand: true });
+    if (state.screen) {
+      conn.send({ type: 'screen-live' });
+      if (state.previews.has(state.myId)) conn.send({ type: 'preview', img: state.previews.get(state.myId) });
+    }
+    // Quem chega depois também vê a tela que já está rolando. Espera o 'caps'
+    // chegar: versão nova só recebe vídeo quando abrir; versão antiga, já.
+    if (state.screen) setTimeout(() => syncScreenOut(member), CAPS_WAIT_MS);
   });
 }
 
@@ -494,7 +501,17 @@ function handleMessage(member, msg) {
       renderAll();
       break;
     case 'screen-stop':
+      member.screenLive = false;
       closeScreenIn(member);
+      break;
+    case 'screen-live':
+      member.screenLive = true;
+      registerScreen(member.id, `Tela de ${member.name}`, null, true);
+      renderSeat(member);
+      break;
+    case 'caps':
+      member.onDemand = !!msg.ondemand;
+      if (state.screen) syncScreenOut(member);
       break;
     case 'movies':
       handleMoviesMessage(msg);
@@ -502,7 +519,10 @@ function handleMessage(member, msg) {
     case 'watching':
       member.watchingIds = Array.isArray(msg.ids) ? msg.ids.filter((x) => typeof x === 'string').slice(0, 8) : [];
       updateLiveRail();
-      if (state.screen) retuneScreen();
+      if (state.screen) {
+        syncScreenOut(member);
+        retuneScreen();
+      }
       break;
     case 'preview':
       handlePreview(member, msg);
@@ -1235,7 +1255,8 @@ async function beginShare(stream, presetKey, mode, audio = null) {
     previewTimer: setInterval(sharePreview, PREVIEW_MS),
   };
   setTimeout(sharePreview, 600); // primeira foto logo que a imagem chega
-  for (const m of state.members.values()) sendScreenTo(m);
+  broadcast({ type: 'screen-live' });
+  for (const m of state.members.values()) syncScreenOut(m);
   registerScreen(state.myId, 'Sua tela', stream, false);
   addSystem('Você começou a compartilhar a tela.');
   updateDock();
@@ -1258,6 +1279,23 @@ function stopShare() {
   unregisterScreen(state.myId);
   updateDock();
   renderSelf();
+}
+
+// Chamada de vídeo só pra quem abriu a transmissão (e fecha quando sai): sem
+// ela, nada de codificador nem conexão parada ocupando memória. Versão antiga
+// (sem 'caps') recebe sempre, como antes.
+const CAPS_WAIT_MS = 1500;
+
+function syncScreenOut(member) {
+  if (!state.screen || !state.members.has(member.id)) return;
+  const wants = member.onDemand ? !!member.watchingIds?.includes(state.myId) : true;
+  if (wants) sendScreenTo(member);
+  else if (member.screenOut && member.onDemand) {
+    const call = member.screenOut;
+    member.screenOut = null;
+    call.close();
+    retuneScreen();
+  }
 }
 
 function sendScreenTo(member) {
@@ -1288,8 +1326,22 @@ function attachScreenIn(member, call) {
     renderSeat(member);
   });
   call.on('close', () => {
-    if (member.screenIn === call) closeScreenIn(member);
+    if (member.screenIn !== call) return;
+    // Versão nova fecha a chamada quando eu saio da transmissão; ela continua
+    // ao vivo (foto na frente do boneco). Versão antiga só fecha quando acaba.
+    if (member.screenLive) detachScreenIn(member);
+    else closeScreenIn(member);
   });
+}
+
+function detachScreenIn(member) {
+  member.screenIn = null;
+  const s = state.screens.get(member.id);
+  if (!s) return;
+  s.stream = null;
+  s.video.srcObject = null;
+  const thumb = s.card?.querySelector('.shot video');
+  if (thumb) thumb.srcObject = null;
 }
 
 function closeScreenIn(member) {
@@ -1317,7 +1369,8 @@ function registerScreen(id, label, stream, audible) {
     state.screens.set(id, s);
   }
   Object.assign(s, { stream, label, audible });
-  s.video.srcObject = stream;
+  // O vídeo do player só recebe o stream quando está aberto (renderWatch):
+  // escondido e tocando, gastaria memória de vídeo à toa.
   const isNew = !s.card && !s.seen;
   s.seen = true;
   if (state.tuned.has(id)) {
@@ -1478,12 +1531,17 @@ function unwatch(id) {
 
 function renderWatch() {
   const ids = watchedIds();
-  for (const [id, s] of state.screens) if (!ids.includes(id)) s.video.muted = true;
+  for (const [id, s] of state.screens) {
+    if (ids.includes(id)) continue;
+    s.video.muted = true;
+    s.video.srcObject = null;
+  }
   const tiles = ids.map((id) => {
     const s = state.screens.get(id);
     const tile = document.createElement('div');
     tile.className = 'screen-tile';
     tile.dataset.id = id;
+    if (s.video.srcObject !== s.stream) s.video.srcObject = s.stream;
     tile.append(s.video);
     if (ids.length > 1) {
       const name = document.createElement('span');
@@ -1523,6 +1581,7 @@ function sendWatching() {
 const PREVIEW_MS = 4000;
 const PREVIEW_WIDTH = 320;
 const PREVIEW_MAX_CHARS = 300_000;
+let previewCanvas = null;
 
 function seatOf(id) {
   return id === state.myId ? state.selfSeat : state.members.get(id)?.seat;
@@ -1534,7 +1593,9 @@ async function capturePreview() {
   try {
     const frame = await new ImageCapture(track).grabFrame();
     const height = Math.min(320, Math.round((PREVIEW_WIDTH * frame.height) / frame.width));
-    const canvas = new OffscreenCanvas(PREVIEW_WIDTH, height);
+    previewCanvas ??= new OffscreenCanvas(PREVIEW_WIDTH, height);
+    const canvas = previewCanvas;
+    if (canvas.height !== height) canvas.height = height;
     canvas.getContext('2d').drawImage(frame, 0, 0, PREVIEW_WIDTH, height);
     frame.close();
     const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.6 });
@@ -1654,7 +1715,11 @@ function showScreenControls() {
 }
 
 function closeWatch() {
-  for (const id of watchedIds()) state.screens.get(id).video.muted = true;
+  for (const id of watchedIds()) {
+    const v = state.screens.get(id).video;
+    v.muted = true;
+    v.srcObject = null;
+  }
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   state.watching = null;
   state.watchingAlso = null;
@@ -2118,7 +2183,7 @@ function fillSeat(seat, { id, name, avatar, host, muted, deaf, sharing, self, si
 function renderSeat(m) {
   fillSeat(m.seat, {
     id: m.id, name: m.name, avatar: m.avatar, host: m.id === state.hostId,
-    muted: m.muted, deaf: m.deaf, sharing: !!m.screenIn, silenced: personPref(m.name).mute,
+    muted: m.muted, deaf: m.deaf, sharing: state.screens.has(m.id), silenced: personPref(m.name).mute,
   });
   // Nome e rosto podem chegar depois da transmissão: atualiza o card dela.
   const card = state.screens.get(m.id)?.card;
