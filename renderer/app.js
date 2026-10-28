@@ -875,10 +875,7 @@ function applyTheme(id) {
   // Faixa de título e botões do Windows na cor do tema.
   document.documentElement.style.setProperty('--titlebar-bg', THEMES[theme].bg);
   window.baderna?.setTitlebarColor(THEMES[theme].bg);
-  $('theme-name').textContent = THEMES[theme].name;
-  for (const btn of $('theme-grid').querySelectorAll('button')) {
-    btn.classList.toggle('selected', btn.dataset.theme === theme);
-  }
+  $('theme-select').value = theme;
 }
 
 function setTheme(id) {
@@ -889,20 +886,8 @@ function setTheme(id) {
   rememberRoomTheme();
 }
 
-function buildThemeGrid() {
-  if ($('theme-grid').children.length) return;
-  for (const [id, theme] of Object.entries(THEMES)) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.dataset.theme = id;
-    btn.innerHTML = `<svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">${themeSvg(id)}</svg>`;
-    const label = document.createElement('span');
-    label.textContent = theme.name;
-    btn.append(label);
-    btn.addEventListener('click', () => setTheme(id));
-    $('theme-grid').append(btn);
-  }
-}
+$('theme-select').replaceChildren(...Object.entries(THEMES).map(([id, theme]) => new Option(theme.name, id)));
+$('theme-select').addEventListener('change', () => setTheme($('theme-select').value));
 
 // ---------- Compartilhar tela ----------
 
@@ -1364,7 +1349,7 @@ async function screenSenderStats(sender) {
 function updateShareEstimate() {
   const viewers = state.members.size;
   if (!viewers) {
-    $('share-estimate').textContent = 'Ninguém na sala pra assistir ainda.';
+    $('share-estimate').textContent = 'Ninguém assistindo ainda.';
     return;
   }
   const preset = SHARE_PRESETS[$('share-quality').value];
@@ -1375,10 +1360,10 @@ function updateShareEstimate() {
   const { perViewer, limited } = screenBitrate({ preset, codec, viewers, withAudio, budget });
   const total = (perViewer + (withAudio ? SCREEN_AUDIO_BITRATE : 0)) * viewers;
   $('share-estimate').textContent =
-    `${viewers} assistindo × ${mbps(perViewer)} Mbps ≈ ${mbps(total)} Mbps de upload · codec ${codec}`
-    + (budget ? ` · limite ${mbps(budget * UPLOAD_HEADROOM)} de ${budgetMbps} Mbps` : ' · sem limite')
-    + (limited ? ' · qualidade reduzida pelo limite' : '')
-    + '. Se a internet apertar, o app baixa a qualidade sozinho pra quem precisar.';
+    `${viewers} assistindo · ~${mbps(total)} Mbps de upload`
+    + (limited ? ' · qualidade reduzida pelo limite' : '');
+  $('share-estimate').title = `${mbps(perViewer)} Mbps por pessoa · codec ${codec}`
+    + (budget ? ` · limite ${mbps(budget * UPLOAD_HEADROOM)} de ${budgetMbps} Mbps` : '');
 }
 
 // Separado do seletor pra dar pra testar com qualquer stream de vídeo.
@@ -2359,6 +2344,83 @@ function sortSeats() {
   for (const [, seat] of entries) $('seats').append(seat);
 }
 
+// ---------- Arquibancada: bonecos se ajeitam ao espaço ----------
+// Folgado: fileira normal. Apertou: encolhem um pouco e depois se espremem
+// (sobrepostos, achatados e tortos). Janela alta e ainda sem espaço: sobe
+// fileira atrás, menor e mais escura, intercalada; quem chegou depois vai atrás.
+
+const SEAT_W = 170;
+const SEAT_H = 266; // cadeira + nome
+const SEAT_STEP = 192; // largura + espaço, folgado
+const SEAT_MIN_SCALE = 0.8; // encolhe até aqui antes de espremer
+const SEAT_MAX_SQUEEZE = 0.35; // fração do passo que pode sobrepor
+const ROW_RISE = 170; // quanto cada fileira de trás sobe (cabeças acima das da frente)
+const ROW_SHRINK = 0.1; // perspectiva por fileira
+const STAGE_MIN_H = 200;
+const STAGE_BASE_H = 288;
+
+function pickSeatLayout(n, width, height) {
+  const maxRows = Math.min(n, height >= 900 ? 3 : height >= 680 ? 2 : 1);
+  for (let rows = 1; rows <= maxRows; rows++) {
+    const perSeat = width / Math.ceil(n / rows);
+    const scale = Math.min(1, Math.max(SEAT_MIN_SCALE, perSeat / SEAT_STEP));
+    const step = Math.min(perSeat, SEAT_STEP * scale);
+    const squeeze = 1 - step / (SEAT_STEP * scale);
+    if (squeeze <= SEAT_MAX_SQUEEZE || rows === maxRows) {
+      if (squeeze <= SEAT_MAX_SQUEEZE) return { rows, scale, step, squeeze };
+      // Nem espremido cabe: encolhe o quanto precisar.
+      const s = perSeat / (SEAT_STEP * (1 - SEAT_MAX_SQUEEZE));
+      return { rows, scale: s, step: perSeat, squeeze: SEAT_MAX_SQUEEZE };
+    }
+  }
+  return { rows: 1, scale: 1, step: SEAT_STEP, squeeze: 0 };
+}
+
+function layoutSeats() {
+  const box = $('seats');
+  const stage = document.querySelector('.stage');
+  const seats = [...box.children];
+  const packed = box.parentElement === stage;
+  box.classList.toggle('packed', packed);
+  if (!packed) {
+    stage.style.height = '';
+    for (const seat of seats) {
+      seat.removeAttribute('style');
+      seat.classList.remove('back');
+    }
+    return;
+  }
+  const n = seats.length;
+  if (!n) return;
+  const { rows, scale, step, squeeze } = pickSeatLayout(n, box.clientWidth - 40, window.innerHeight);
+  const perRow = Math.ceil(n / rows);
+  seats.forEach((seat, i) => {
+    const row = Math.floor(i / perRow);
+    const col = i % perRow;
+    const count = Math.min(perRow, n - row * perRow);
+    const depth = 1 - ROW_SHRINK * row;
+    const rowStep = step * depth;
+    // Fileiras de trás deslocadas meio passo: cabeças aparecem entre as da frente.
+    const x = (col - (count - 1) / 2 + (row % 2) * 0.5) * rowStep;
+    const tilt = squeeze ? (col % 2 ? 1 : -1) * squeeze * 14 : 0;
+    seat.classList.toggle('back', row > 0);
+    seat.style.setProperty('--x', `${x}px`);
+    seat.style.setProperty('--y', `${row * ROW_RISE * scale}px`);
+    seat.style.setProperty('--s', String(scale * depth));
+    seat.style.setProperty('--sx', String(1 - squeeze * 0.4));
+    seat.style.setProperty('--sy', String(1 + squeeze * 0.12));
+    seat.style.setProperty('--tilt', `${tilt}deg`);
+    seat.style.setProperty('--dim', String(1 - row * 0.18));
+    seat.style.zIndex = String((rows - row) * 100 + (count - Math.abs(col - (count - 1) / 2)));
+  });
+  const h = 22 + (SEAT_H + (rows - 1) * ROW_RISE) * scale;
+  stage.style.height = `${Math.round(Math.max(STAGE_MIN_H, Math.min(STAGE_BASE_H, h), rows > 1 ? h : 0))}px`;
+}
+
+new ResizeObserver(layoutSeats).observe($('seats'));
+new MutationObserver(layoutSeats).observe($('seats'), { childList: true });
+window.addEventListener('resize', layoutSeats);
+
 function renderAll() {
   renderSelf();
   for (const m of state.members.values()) renderSeat(m);
@@ -2395,10 +2457,8 @@ function updateDock() {
 
 function updateThemeControls() {
   const host = state.hostId === state.myId;
-  $('theme-chip').disabled = !host;
-  $('theme-chip').title = host ? 'Mudar tema da sala' : 'Só o host muda o tema';
-  $('theme-note').textContent = host ? 'Você é o host: o tema muda pra todo mundo.' : 'Só o host muda o tema da sala.';
-  for (const btn of $('theme-grid').querySelectorAll('button')) btn.disabled = !host;
+  $('theme-select').disabled = !host;
+  $('theme-select').title = host ? 'Muda pra todo mundo da sala' : 'Só o host escolhe o tema';
 }
 
 // ---------- Editor de boneco ----------
@@ -2518,7 +2578,6 @@ function loadAvatar() {
 // ---------- Configurações ----------
 
 function openSettings(inRoom) {
-  buildThemeGrid();
   applyTheme(state.theme);
   updateThemeControls();
   $('settings-face').innerHTML = avatarFaceSvg(state.avatar);
@@ -2747,7 +2806,6 @@ $('room-chip').addEventListener('click', () => {
     (err) => addSystem(`Não deu pra copiar o código: ${err.message}`),
   );
 });
-$('theme-chip').addEventListener('click', () => openSettings(true));
 
 $('btn-mic').addEventListener('click', toggleMute);
 $('btn-deaf').addEventListener('click', toggleDeaf);
@@ -2821,20 +2879,46 @@ $('close-to-tray').addEventListener('change', () => {
 
 // Atualização baixada em segundo plano: botão na barra de título instala e
 // reabre o app (sai da sala antes, avisando a galera).
+let updateReady = null;
 function showUpdateReady(version) {
   if (!version) return;
+  updateReady = version;
   $('update-chip').hidden = false;
   $('update-chip').textContent = `⬆ Atualizar pra ${version}`;
-  $('update-chip').title = 'Reinicia o Baderna com a versão nova (sai da sala, se estiver em uma)';
+  $('update-chip').title = 'Reinicia o Baderna na versão nova';
+  $('update-check').textContent = 'Reiniciar e atualizar';
+  $('update-status').textContent = `Versão ${version} pronta.`;
 }
-window.baderna?.onUpdateReady(showUpdateReady);
-window.baderna?.updateStatus().then(showUpdateReady).catch(() => {});
-$('update-chip').addEventListener('click', async () => {
+async function installUpdateNow() {
   if (state.mainPeer) {
     broadcast({ type: 'bye' });
     await sleep(200);
   }
   window.baderna.installUpdate();
+}
+window.baderna?.onUpdateReady(showUpdateReady);
+window.baderna?.updateStatus().then(showUpdateReady).catch(() => {});
+$('update-chip').addEventListener('click', installUpdateNow);
+
+window.baderna?.appVersion().then((v) => {
+  $('app-version').textContent = `v${v}`;
+  $('lobby-version').textContent = `v${v}`;
+}).catch(() => {});
+
+const UPDATE_MESSAGES = {
+  latest: () => 'Você já está na versão mais recente.',
+  downloading: (v) => `Baixando a versão ${v}…`,
+  dev: () => 'Disponível só no app instalado.',
+  error: () => 'Não deu pra verificar agora. Tente mais tarde.',
+};
+$('update-check').addEventListener('click', async () => {
+  if (updateReady) return installUpdateNow();
+  $('update-check').disabled = true;
+  $('update-status').textContent = 'Verificando…';
+  const r = await window.baderna?.checkUpdate().catch(() => null) ?? { status: 'error' };
+  $('update-check').disabled = false;
+  if (r.status === 'ready') showUpdateReady(r.version);
+  else $('update-status').textContent = (UPDATE_MESSAGES[r.status] ?? UPDATE_MESSAGES.error)(r.version);
 });
 
 // ---------- Atalhos globais ----------
@@ -2854,12 +2938,12 @@ function renderHotkeys(result) {
   const taken = [];
   for (const [action, pref] of Object.entries(HOTKEY_PREFS)) {
     const accel = loadPref(pref);
-    $(`hotkey-${action}`).textContent = capturingHotkey === action ? 'Aperte o atalho…' : accel || 'nenhum';
+    $(`hotkey-${action}`).textContent = capturingHotkey === action ? 'Aperte as teclas…' : accel || 'Definir';
     if (accel && result[action] === false) taken.push(accel);
   }
   $('hotkey-status').textContent = capturingHotkey
-    ? 'Esc cancela · Backspace apaga o atalho.'
-    : taken.length ? `${taken.join(', ')} já é usado por outro programa. Escolha outro.` : '';
+    ? 'Esc cancela · Backspace remove'
+    : taken.length ? `${taken.join(', ')} já está em uso por outro programa.` : '';
 }
 
 function accelFromEvent(e) {
@@ -2908,6 +2992,7 @@ document.addEventListener('fullscreenchange', () => {
     showScreenControls();
   }
   else if ($('seats').parentElement !== stage) stage.insertBefore($('seats'), stage.querySelector('.dock'));
+  layoutSeats();
   if (!fs && state.splitRestore) {
     const other = state.splitRestore;
     state.splitRestore = null;

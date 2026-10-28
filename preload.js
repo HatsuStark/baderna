@@ -25,4 +25,6 @@ contextBridge.exposeInMainWorld('baderna', {
   onUpdateReady: (cb) => subscribe('update:ready', cb),
   updateStatus: () => ipcRenderer.invoke('update:status'),
   installUpdate: () => ipcRenderer.send('update:install'),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+  appVersion: () => ipcRenderer.invoke('app:version'),
 });

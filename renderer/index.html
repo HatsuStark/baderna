@@ -26,7 +26,7 @@
       <div class="lobby-grid">
         <div class="lobby-avatar">
           <div id="lobby-seat" class="seat preview"></div>
-          <button id="edit-avatar-lobby" class="ghost" type="button">✎ Montar meu boneco</button>
+          <button id="edit-avatar-lobby" class="ghost" type="button">✎ Editar boneco</button>
         </div>
         <div class="lobby-form">
           <label>Seu nome
@@ -47,6 +47,7 @@
         <h3>Salas salvas</h3>
         <div id="saved-rooms" class="saved-rooms"></div>
       </section>
+      <p id="lobby-version" class="lobby-version"></p>
     </div>
   </section>
 
@@ -59,7 +60,6 @@
         <button id="room-chip" class="chip" type="button" title="Copiar código">sala <b id="room-code"></b></button>
         <span id="count-chip" class="chip"></span>
         <button id="movies-chip" class="chip" type="button" title="Filmes que a galera já viu">🎬 filmes <b id="movies-count"></b></button>
-        <button id="theme-chip" class="chip" type="button">tema <b id="theme-name"></b></button>
       </div>
     </header>
 
@@ -121,7 +121,7 @@
   <!-- ---------- Menu de uma pessoa (clique no boneco) ---------- -->
   <div id="person-menu" class="person-menu" hidden>
     <b id="pm-name"></b>
-    <label>Volume pra mim <span id="pm-vol-val"></span>
+    <label>Volume <span id="pm-vol-val"></span>
       <input id="pm-vol" type="range" min="0" max="100" step="5">
     </label>
     <button id="pm-mute" class="ghost" type="button"></button>
@@ -132,48 +132,54 @@
     <h2>Configurações</h2>
     <section class="settings-section">
       <h3>Áudio</h3>
-      <label>Microfone
+      <label class="setting-row">Microfone
         <select id="mic"></select>
       </label>
-      <div class="sensitivity">
-        <div id="mic-meter" class="meter big" title="Fale pra testar"><div id="mic-level"></div><div id="mic-gate-mark" class="gate-mark" hidden></div></div>
-        <label class="check"><input type="checkbox" id="mic-gate-auto"> Sensibilidade automática (se ajusta ao ruído do seu ambiente)</label>
-        <input id="mic-gate" type="range" min="-70" max="-10" step="1" aria-label="Sensibilidade do microfone">
-        <div class="gate-scale"><span>pega tudo</span><span>só voz alta</span></div>
-        <p class="status">Som abaixo da linha não é enviado. Ajuste pra barra passar da linha só quando você fala; estalos rápidos (teclado, clique) são ignorados.</p>
-      </div>
-      <label>Saída de som
+      <label class="setting-row">Saída
         <select id="speaker"></select>
       </label>
+      <div class="setting-row">
+        <span>Sensibilidade</span>
+        <label class="check"><input type="checkbox" id="mic-gate-auto"> Automática</label>
+      </div>
+      <div class="gate-bar" title="Só o som que passa da linha é enviado">
+        <div id="mic-meter" class="meter big"><div id="mic-level"></div><div id="mic-gate-mark" class="gate-mark" hidden></div></div>
+        <input id="mic-gate" type="range" min="-70" max="-10" step="1" aria-label="Sensibilidade do microfone">
+      </div>
       <div id="audio-processing" class="checks"></div>
-      <label class="check"><input type="checkbox" id="sounds"> Som quando alguém entra ou sai</label>
-      <label class="check"><input type="checkbox" id="live-alert"> Aviso quando alguém começa a transmitir</label>
     </section>
     <section class="settings-section">
-      <h3>Atalhos globais</h3>
-      <p class="status">Funcionam até com o Baderna minimizado. Clique e aperte as teclas (ex.: Ctrl+Shift+F9).</p>
-      <div class="hotkey-row"><span>Mutar microfone</span><button id="hotkey-mute" class="ghost" type="button"></button></div>
-      <div class="hotkey-row"><span>Silenciar tudo</span><button id="hotkey-deaf" class="ghost" type="button"></button></div>
+      <h3>Avisos</h3>
+      <label class="check"><input type="checkbox" id="sounds"> Som de entrada e saída</label>
+      <label class="check"><input type="checkbox" id="live-alert"> Alerta de transmissão</label>
+    </section>
+    <section class="settings-section">
+      <h3>Atalhos</h3>
+      <div class="setting-row"><span>Mutar microfone</span><button id="hotkey-mute" class="ghost" type="button"></button></div>
+      <div class="setting-row"><span>Silenciar tudo</span><button id="hotkey-deaf" class="ghost" type="button"></button></div>
       <p id="hotkey-status" class="status"></p>
     </section>
     <section class="settings-section">
-      <h3>Janela</h3>
-      <label class="check">
-        <input type="checkbox" id="close-to-tray" checked>
-        Ao fechar, continuar na bandeja (você segue na sala)
+      <h3>Geral</h3>
+      <label class="check"><input type="checkbox" id="close-to-tray" checked> Fechar minimiza pra bandeja</label>
+    </section>
+    <section class="settings-section room-only">
+      <h3>Sala</h3>
+      <div class="setting-row">
+        <span class="avatar-label"><span id="settings-face" class="face-thumb"></span>Seu boneco</span>
+        <button id="edit-avatar-room" class="ghost" type="button">Editar</button>
+      </div>
+      <label class="setting-row">Tema
+        <select id="theme-select"></select>
       </label>
     </section>
-    <section class="settings-section room-only">
-      <h3>Seu boneco</h3>
-      <div class="row">
-        <div id="settings-face" class="face-thumb"></div>
-        <button id="edit-avatar-room" class="ghost" type="button">✎ Montar meu boneco</button>
+    <section class="settings-section">
+      <h3>Sobre</h3>
+      <div class="setting-row">
+        <span>Baderna <b id="app-version" class="version"></b></span>
+        <button id="update-check" class="ghost" type="button">Verificar atualizações</button>
       </div>
-    </section>
-    <section class="settings-section room-only">
-      <h3>Tema da sala</h3>
-      <p id="theme-note" class="status"></p>
-      <div id="theme-grid" class="theme-grid"></div>
+      <p id="update-status" class="status"></p>
     </section>
     <div class="dialog-actions">
       <button id="settings-close" class="primary" type="button">Fechar</button>
@@ -215,7 +221,7 @@
       <div class="field">
         <h4>Quem assistiu</h4>
         <div id="movie-who" class="who-list"></div>
-        <input id="movie-who-extra" maxlength="120" placeholder="Mais alguém? Separe por vírgula">
+        <input id="movie-who-extra" maxlength="120" placeholder="Mais alguém? (separe por vírgula)">
       </div>
       <div class="dialog-actions">
         <button id="movie-delete" class="ghost" type="button">Remover</button>
@@ -235,7 +241,7 @@
       <label>Nome da sala
         <input id="save-name" maxlength="30" placeholder="ex: Resenha de quinta" autocomplete="off">
       </label>
-      <p class="status">Código: <b id="save-code"></b> · o tema atual fica salvo junto.</p>
+      <p class="status">Código <b id="save-code"></b></p>
       <div class="dialog-actions">
         <button id="save-remove" class="ghost" type="button">Remover dos salvos</button>
         <span class="spacer"></span>
@@ -274,20 +280,20 @@
       </label>
       <label>Conteúdo
         <select id="share-mode">
-          <option value="motion">Filme / vídeo (prioriza fluidez)</option>
-          <option value="detail">Texto / código (prioriza nitidez)</option>
+          <option value="motion">Vídeo · mais fluido</option>
+          <option value="detail">Texto · mais nítido</option>
         </select>
       </label>
     </div>
     <div class="row">
-      <label>Seu upload (Mbps) — o app divide entre quem assiste
+      <label>Limite de upload (Mbps)
         <input id="share-upload" type="number" min="0" step="1" placeholder="sem limite">
       </label>
     </div>
     <p id="share-estimate" class="status estimate"></p>
-    <label class="check">
+    <label class="check" title="Janela: só o som dela · Tela inteira: tudo, menos a Baderna">
       <input type="checkbox" id="share-audio" checked>
-      Transmitir áudio — janela: só o som dela · tela inteira: tudo menos a Baderna
+      Transmitir áudio
     </label>
     <div id="sources" class="sources"></div>
     <div class="dialog-actions">

@@ -233,6 +233,23 @@ function installUpdate() {
 
 ipcMain.on('update:install', installUpdate);
 ipcMain.handle('update:status', () => updateReady);
+ipcMain.handle('app:version', () => app.getVersion());
+
+// Verificação pedida pelo botão das configurações. Achando versão nova, o
+// download segue sozinho (autoDownload) e o aviso chega por 'update:ready'.
+ipcMain.handle('update:check', async () => {
+  if (!app.isPackaged) return { status: 'dev' };
+  if (updateReady) return { status: 'ready', version: updateReady };
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    const version = String(result?.updateInfo?.version ?? '');
+    if (!result?.isUpdateAvailable || !version) return { status: 'latest' };
+    return updateReady ? { status: 'ready', version: updateReady } : { status: 'downloading', version };
+  } catch (err) {
+    console.warn('update', err?.message ?? err);
+    return { status: 'error' };
+  }
+});
 
 // ---------- Servidores ICE (STUN/TURN) ----------
 // STUN descobre o endereço público; TURN repassa o tráfego quando a conexão
