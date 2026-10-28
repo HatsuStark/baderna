@@ -75,6 +75,11 @@ function createWindow() {
     }
   });
   win.on('closed', () => { mainWindow = null; });
+  // Com backgroundThrottling desligado a página não sabe que sumiu: avisa,
+  // pra pausar animações (bonecos balançando) e não gastar GPU no jogo.
+  const visible = (v) => () => win.webContents.send('window:visible', v);
+  for (const ev of ['minimize', 'hide']) win.on(ev, visible(false));
+  for (const ev of ['restore', 'show']) win.on(ev, visible(true));
 }
 
 // ---------- Bandeja ----------

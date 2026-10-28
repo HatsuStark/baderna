@@ -18,6 +18,7 @@ const ROOM_PREFIX = 'baderna-v1-';
 const SPEAKING_THRESHOLD = 0.02;
 const SPEAKING_HOLD_MS = 250;
 const MOUTH_HOLD_MS = 90; // boca segue as sílabas; segura só um pouquinho
+const RECENT_TALK_MS = 2500; // tela cheia: miniatura fica um pouco depois de parar de falar
 const ICE_GRACE_MS = 4000;
 const BEACON_RETRY_MS = 2000;
 const BEACON_MAX_TRIES = 30;
@@ -2107,10 +2108,12 @@ function removeMeter(id) {
 const SWAY_DB_FLOOR = -45;  // abaixo disso: quase parado
 const SWAY_DB_CEIL = -12;   // grito: balanço máximo
 const SWAY_MAX = { x: 12, y: 8, r: 18 };
-const SWAY_EASE = 0.45;
+const SWAY_EASE = 0.45; // por quadro de 60 Hz; corrigido pelo dt real
+// Medidores e balanço a ~30 quadros/s: monitor de 144 Hz não repinta 144×/s.
+const TICK_MS = 1000 / 30;
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-function swayHead(seat, meter, speaking, now) {
+function swayHead(seat, meter, speaking, now, dt) {
   const head = seat.querySelector('.av-head');
   if (!head) return;
   meter.pose ??= { x: 0, y: 0, r: 0 };
@@ -2140,15 +2143,23 @@ function swayHead(seat, meter, speaking, now) {
 
   const p = meter.pose;
   const t = meter.target;
-  p.x += (t.x - p.x) * SWAY_EASE;
-  p.y += (t.y - p.y) * SWAY_EASE;
-  p.r += (t.r - p.r) * SWAY_EASE;
+  const ease = 1 - (1 - SWAY_EASE) ** (dt / (1000 / 60));
+  p.x += (t.x - p.x) * ease;
+  p.y += (t.y - p.y) * ease;
+  p.r += (t.r - p.r) * ease;
   const still = Math.abs(p.x) + Math.abs(p.y) + Math.abs(p.r) < 0.05;
-  head.style.transform = still ? '' : `translate(${p.x.toFixed(2)}px, ${p.y.toFixed(2)}px) rotate(${p.r.toFixed(2)}deg)`;
+  const transform = still ? '' : `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) rotate(${p.r.toFixed(1)}deg)`;
+  // Parado e já sem transform: nem toca no estilo (nada pra repintar).
+  if (meter.transform !== transform) {
+    meter.transform = transform;
+    head.style.transform = transform;
+  }
 }
 
 function tick() {
+  state.rafId = requestAnimationFrame(tick);
   const now = performance.now();
+  if (now - (state.lastTick || 0) < TICK_MS - 2) return;
   const dt = Math.min(200, now - (state.lastTick || now));
   state.lastTick = now;
   for (const [id, meter] of state.meters) {
@@ -2162,15 +2173,17 @@ function tick() {
     const speaking = now - meter.lastLoud < SPEAKING_HOLD_MS && (id !== state.myId || state.gateOpen);
     const seat = id === state.myId ? state.selfSeat : state.members.get(id)?.seat;
     if (speaking && state.mainPeer) statOf(id === state.myId ? state.name : state.members.get(id)?.name ?? '…').talk += dt;
+    if (speaking) meter.lastSpoke = now;
+    if (state.windowHidden) continue; // minimizado/na bandeja: só conta, não desenha
     seat?.classList.toggle('speaking', speaking);
+    seat?.classList.toggle('recent', now - (meter.lastSpoke ?? -Infinity) < RECENT_TALK_MS);
     seat?.classList.toggle('loud', now - meter.lastLoud < MOUTH_HOLD_MS);
-    if (seat) swayHead(seat, meter, speaking, now);
+    if (seat) swayHead(seat, meter, speaking, now, dt);
   }
   if ($('settings-dialog').open) {
     const mine = state.meters.get(state.myId);
     if (mine) showMicLevel(mine.level);
   }
-  state.rafId = requestAnimationFrame(tick);
 }
 
 // ---------- Dispositivos e teste de microfone (lobby) ----------
@@ -2210,11 +2223,13 @@ async function startPreview() {
   state.preview = { stream, ctx, raf: 0 };
 
   const loop = () => {
+    state.preview.raf = requestAnimationFrame(loop);
+    // A barra só aparece nas configurações; fechadas, nada a medir.
+    if (!$('settings-dialog').open) return;
     analyser.getFloatTimeDomainData(buf);
     let sum = 0;
     for (const v of buf) sum += v * v;
     showMicLevel(Math.sqrt(sum / buf.length));
-    state.preview.raf = requestAnimationFrame(loop);
   };
   loop();
 }
@@ -2864,6 +2879,7 @@ window.addEventListener('beforeunload', () => {
   destroyPeer(state.beacon);
 });
 // Bandeja: ações do menu e a opção de fechar pra bandeja.
+window.baderna?.onWindowVisible((v) => { state.windowHidden = !v; });
 window.baderna?.onTrayAction((action) => {
   if (!state.mainPeer) return;
   if (action === 'mute') toggleMute();
@@ -3006,7 +3022,7 @@ document.addEventListener('fullscreenchange', () => {
 function setFullscreenSeatsHidden(hide) {
   $('screen-view').classList.toggle('hide-seats', hide);
   $('screen-seats-toggle').classList.toggle('off', hide);
-  $('screen-seats-toggle').title = hide ? 'Mostrar a galera' : 'Esconder a galera';
+  $('screen-seats-toggle').title = hide ? 'Mostrar quem fala' : 'Esconder quem fala';
 }
 setFullscreenSeatsHidden(loadPref('fsSeats') === 'hide');
 $('screen-seats-toggle').addEventListener('click', () => {

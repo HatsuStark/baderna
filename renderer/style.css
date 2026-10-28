@@ -1,6 +1,6 @@
 :root {
   --bg: #121214;
-  --panel: rgba(24, 24, 30, .72);
+  --panel: rgba(22, 22, 28, .88); /* sem blur atrás (custa GPU a cada quadro): mais opaco */
   --panel-solid: #1a1a21;
   --line: rgba(255, 255, 255, .08);
   --text: #e8e6ee;
@@ -59,6 +59,9 @@ body.is-fullscreen .titlebar { display: none; }
 /* ---------- Fundo ---------- */
 
 .wall { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+/* Fundo e vinheta são estáticos: camadas próprias, desenhadas uma vez e só
+   recompostas (o SVG do tema tem ruído e blurs caros de redesenhar). */
+.wall, .vignette { will-change: transform; contain: strict; }
 .vignette {
   position: fixed; inset: 0; z-index: 1; pointer-events: none;
   background:
@@ -119,7 +122,7 @@ label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); fo
 .lobby { position: relative; z-index: 2; height: 100%; display: grid; place-items: center; padding: 24px; }
 .lobby-card {
   width: min(760px, 100%); padding: 28px 36px 32px; border-radius: 22px;
-  background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(12px);
+  background: var(--panel); border: 1px solid var(--line);
   box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
 }
 .lobby-grid { display: grid; grid-template-columns: 240px 1fr; gap: 32px; align-items: center; }
@@ -153,7 +156,7 @@ label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); fo
 }
 .chips { display: flex; gap: 8px; align-items: center; }
 .chip {
-  border: 1px solid var(--line); background: var(--panel); backdrop-filter: blur(6px);
+  border: 1px solid var(--line); background: var(--panel);
   padding: 6px 12px; border-radius: 999px; color: var(--muted);
   font-weight: 600; font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
   /* altura fixa: o ★ vem de outra fonte e desalinhava o chip */
@@ -213,7 +216,7 @@ button.chip:disabled { opacity: 1; }
 .composer { flex: none; display: flex; justify-content: center; padding: 4px 132px 8px 12px; gap: 0; }
 .composer input {
   width: min(836px, 100%); height: 52px; border-radius: 14px 0 0 14px; padding: 0 18px;
-  background: var(--panel); backdrop-filter: blur(8px); border-right: none;
+  background: var(--panel); border-right: none;
 }
 .composer .send {
   height: 52px; width: 56px; border-radius: 0 14px 14px 0; border: 1px solid var(--line); border-left: none;
@@ -260,30 +263,37 @@ button.chip:disabled { opacity: 1; }
 .screen-view:fullscreen.controls .screen-bar { opacity: 1; pointer-events: auto; }
 .screen-view:fullscreen:not(.controls) { cursor: none; }
 
-/* Tela cheia: a galera aparece em miniatura embaixo do vídeo (dá pra esconder). */
+/* Tela cheia: só quem está falando aparece, em miniatura no canto inferior
+   esquerdo, entrando aos pulos. Dá pra esconder; o botão só aparece com o mouse. */
 .screen-seats { display: none; }
 .screen-view:fullscreen .screen-seats {
-  display: flex; flex-direction: column; align-items: center; gap: .8vh;
-  position: absolute; left: 0; right: 0; bottom: 0;
-  padding: 2vh 0 1vh; pointer-events: none;
-  background: linear-gradient(to top, rgba(0, 0, 0, .8), rgba(0, 0, 0, .45) 60%, transparent);
+  display: flex; flex-direction: column-reverse; align-items: flex-start; gap: .8vh;
+  position: absolute; left: 2.4vh; bottom: 2.4vh; z-index: 3; pointer-events: none;
 }
-.screen-seats-row { display: flex; justify-content: center; }
-/* Escondida: some a fileira e o degradê, o 👥 fica sozinho no rodapé pra trazer de volta. */
-.screen-view.hide-seats .screen-seats { background: none; }
+.screen-seats-row { display: flex; }
 .screen-view.hide-seats .screen-seats-row { display: none; }
 #screen-seats-toggle {
   pointer-events: auto; display: grid; place-items: center; padding: .3vh 1.6vh;
   background: rgba(14, 14, 20, .75); border: 1px solid var(--line); border-radius: 999px;
 }
 /* Tamanho pela altura da tela: fica proporcional em 1080p, 1440p ou 4K. */
-.screen-seats .seats { position: static; padding: 0; gap: 1.2vh; overflow: visible; }
-.screen-seats .seat { width: 12vh; padding-top: 1.8vh; }
-.screen-seats .seat svg.avatar-seat { width: 12vh; height: 15vh; }
-.screen-seats .seat .aura { width: 14.5vh; height: 3.2vh; bottom: 2.4vh; }
-.screen-seats .seat .ring { width: 13vh; height: 2.4vh; bottom: 2.7vh; }
-.screen-seats .seat .tag { font-size: 1.5vh; padding: 0 .9vh; }
-.screen-seats .badge { font-size: 1vh; }
+.screen-seats .seats { position: static; padding: 0; display: flex; flex-direction: column; align-items: flex-start; gap: .4vh; overflow: visible; }
+.screen-seats .seat { display: none; width: 9vh; padding-top: 0; }
+.screen-seats .seat.recent { display: flex; animation: mini-pop .45s cubic-bezier(.34, 1.56, .64, 1); }
+.screen-seats .seat:nth-child(odd) { transform: rotate(-5deg); }
+.screen-seats .seat:nth-child(even) { transform: rotate(4deg); }
+.screen-seats .seat svg.avatar-seat { width: 9vh; height: 11.25vh; filter: drop-shadow(.3vh .4vh 0 rgba(0, 0, 0, .7)); }
+.screen-seats .seat .aura { width: 11vh; height: 2.4vh; bottom: 1.9vh; }
+.screen-seats .seat .ring { width: 10vh; height: 1.8vh; bottom: 2.1vh; }
+.screen-seats .seat .tag { font-size: 1.4vh; padding: 0 .8vh; margin-top: -.4vh; }
+.screen-seats .badges, .screen-seats .seat-live { display: none; }
+@keyframes mini-pop {
+  0% { opacity: 0; translate: -12vh 2vh; scale: .3; rotate: -25deg; }
+  100% { opacity: 1; translate: 0 0; scale: 1; rotate: 0deg; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .screen-seats .seat.recent { animation: none; }
+}
 /* Seta pra baixo = esconder; escondida, vira pra cima = mostrar. */
 #screen-seats-toggle svg {
   width: 2.4vh; height: 2.4vh; fill: none; stroke: currentColor; stroke-width: 2.6;
@@ -313,12 +323,12 @@ button.chip:disabled { opacity: 1; }
   position: absolute; bottom: var(--y, 0); left: calc(50% + var(--x, 0px)); margin-left: -85px;
   transform-origin: 50% 100%;
   transform: scale(var(--s, 1)) rotate(var(--tilt, 0deg)) scale(var(--sx, 1), var(--sy, 1));
-  filter: brightness(var(--dim, 1));
   transition: left .55s cubic-bezier(.34, 1.56, .64, 1), bottom .55s cubic-bezier(.34, 1.56, .64, 1),
-    transform .55s cubic-bezier(.34, 1.56, .64, 1), filter .3s;
+    transform .55s cubic-bezier(.34, 1.56, .64, 1);
 }
 /* Fileira de trás: o nome vai pra cima da cabeça, senão some atrás da galera da frente. */
 .seats.packed > .seat.back .tag { order: -1; margin: 0 0 2px; }
+.seats.packed > .seat.back { filter: brightness(var(--dim, 1)); }
 .stage { transition: height .35s ease; }
 @media (prefers-reduced-motion: reduce) {
   .seats.packed > .seat, .stage { transition: none; }
@@ -335,15 +345,13 @@ button.chip:disabled { opacity: 1; }
 .seat .aura, .seat .ring { position: absolute; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity .12s; }
 .seat .aura {
   bottom: 22px; width: 210px; height: 46px; border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(25, 240, 255, .75), rgba(25, 240, 255, .18) 55%, transparent 72%);
-  filter: blur(6px);
+  background: radial-gradient(ellipse, rgba(25, 240, 255, .7), rgba(25, 240, 255, .2) 45%, rgba(25, 240, 255, .06) 62%, transparent 72%);
 }
 .seat .ring {
   bottom: 26px; width: 186px; height: 34px; border-radius: 50%;
   border: 2px solid var(--cyan); box-shadow: 0 0 16px var(--cyan), inset 0 0 12px var(--cyan);
 }
 .seat.speaking .aura, .seat.speaking .ring { opacity: 1; }
-.seat.speaking svg.avatar-seat { filter: drop-shadow(3px 4px 0 rgba(0, 0, 0, .55)) drop-shadow(0 0 12px rgba(25, 240, 255, .6)); }
 .seat.loud .m-open { display: inline; }
 .seat.loud .m-closed { display: none; }
 
@@ -402,7 +410,7 @@ button.chip:disabled { opacity: 1; }
 .dock {
   position: absolute; right: 28px; bottom: 24px; z-index: 4;
   display: flex; flex-direction: column; gap: 12px; padding: 12px 10px; border-radius: 22px;
-  background: rgba(16, 16, 22, .75); border: 1px solid var(--line); backdrop-filter: blur(10px);
+  background: rgba(16, 16, 22, .75); border: 1px solid var(--line);
   box-shadow: 0 10px 40px rgba(0, 0, 0, .5);
 }
 .btn {
@@ -431,7 +439,7 @@ dialog {
   box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
 }
 dialog.wide-dialog { width: min(920px, 94vw); }
-dialog::backdrop { background: rgba(0, 0, 0, .6); backdrop-filter: blur(3px); }
+dialog::backdrop { background: rgba(0, 0, 0, .7); }
 dialog h2 { margin: 0 0 16px; font-family: var(--marker); font-weight: 400; font-size: 26px; letter-spacing: .5px; }
 dialog h3 { margin: 0 0 10px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 dialog .row { margin-top: 12px; }
@@ -573,9 +581,9 @@ label.check input { width: auto; }
 #hotkey-mute, #hotkey-deaf { font-family: 'Chakra Petch', monospace; }
 .version { color: var(--cyan); font-weight: 600; }
 .lobby-version { margin: 14px 0 0; text-align: right; font-size: 11px; color: var(--muted); opacity: .7; }
-/* Galera escondida: a setinha pra trazer de volta some junto com os controles. */
+/* A setinha de esconder/mostrar some junto com os controles. */
 #screen-seats-toggle { transition: opacity .25s; }
-.screen-view:fullscreen.hide-seats:not(.controls) #screen-seats-toggle { opacity: 0; pointer-events: none; }
+.screen-view:fullscreen:not(.controls) #screen-seats-toggle { opacity: 0; pointer-events: none; }
 
 /* ---------- Coluna AO VIVO (transmissões, canto esquerdo) ---------- */
 .live-rail {
