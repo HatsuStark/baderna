@@ -137,7 +137,6 @@ const state = {
   codecOrder: null,   // preferência de codec de vídeo desta máquina (medida uma vez)
   codecOrderPromise: null,
   iceServers: null,   // STUN/TURN usados nas conexões (vêm do main)
-  screenMuted: false, // mutei a tela que estou assistindo (só pra mim)
   watchingAlso: null, // segunda transmissão aberta, lado a lado
   tuned: new Set(),   // transmissões que abri (coluna da esquerda): só essas recebem vídeo
   previews: new Map(), // peerId -> foto da tela (data:image/jpeg) mostrada na frente do boneco
@@ -1473,12 +1472,14 @@ function attachScreenIn(member, call) {
 
 function detachScreenIn(member) {
   member.screenIn = null;
-  const s = state.screens.get(member.id);
+  const id = member.id;
+  const s = state.screens.get(id);
   if (!s) return;
   s.stream = null;
   s.video.srcObject = null;
   const thumb = s.card?.querySelector('.shot video');
   if (thumb) thumb.srcObject = null;
+  syncScreenAudio(id);
 }
 
 function closeScreenIn(member) {
@@ -1502,10 +1503,11 @@ function registerScreen(id, label, stream, audible) {
     video.playsInline = true;
     video.muted = true;
     applySink(video);
-    s = { video, card: null };
+    s = { video, card: null, audio: null, vol: 1, muted: false };
     state.screens.set(id, s);
   }
   Object.assign(s, { stream, label, audible });
+  syncScreenAudio(id);
   // O vídeo do player só recebe o stream quando está aberto (renderWatch):
   // escondido e tocando, gastaria memória de vídeo à toa.
   const isNew = !s.card && !s.seen;
@@ -1527,6 +1529,8 @@ function unregisterScreen(id) {
   const wasWatched = [state.watching, state.watchingAlso].includes(id);
   state.screens.delete(id);
   s.video.srcObject = null;
+  s.audio?.remove();
+  s.audio = null;
   s.card?.remove();
   state.tuned.delete(id);
   state.previews.delete(id);
@@ -1578,23 +1582,47 @@ function createScreenCard(id, label, stream) {
     watchSide(id);
   });
   side.addEventListener('dblclick', (e) => e.stopPropagation());
-  const close = document.createElement('button');
-  close.type = 'button';
-  close.className = 'card-close';
-  close.textContent = '✕';
-  close.title = 'Tirar da coluna (para de receber o vídeo)';
-  close.addEventListener('click', (e) => {
-    e.stopPropagation();
-    untune(id);
-  });
-  close.addEventListener('dblclick', (e) => e.stopPropagation());
-  shot.append(side, close);
-  card.append(shot, meta, viewers);
+  shot.append(side);
+  card.append(shot, meta, viewers, createCardControls(id));
   card.addEventListener('dblclick', () => {
     if (watchedIds().includes(id) && !document.fullscreenElement) toggleFullscreen();
     else watch(id);
   });
   return card;
+}
+
+const SPEAKER_SVG = '<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/><path class="slash" d="M16 9l6 6M22 9l-6 6"/></svg>';
+
+// Som da transmissão já na miniatura (volume e mudo por tela) + Sair.
+function createCardControls(id) {
+  const bar = document.createElement('div');
+  bar.className = 'card-controls';
+  const mute = document.createElement('button');
+  mute.type = 'button';
+  mute.className = 'ghost icon card-mute';
+  mute.innerHTML = SPEAKER_SVG;
+  mute.addEventListener('click', () => toggleScreenMute([id]));
+  const vol = document.createElement('input');
+  vol.type = 'range';
+  vol.min = '0';
+  vol.max = '1';
+  vol.step = '0.05';
+  vol.className = 'card-volume';
+  vol.setAttribute('aria-label', 'Volume da transmissão');
+  vol.addEventListener('input', () => setScreenVolume(Number(vol.value), [id]));
+  const leaveBtn = document.createElement('button');
+  leaveBtn.type = 'button';
+  leaveBtn.className = 'ghost card-leave';
+  leaveBtn.textContent = 'Sair';
+  leaveBtn.title = 'Sair da transmissão';
+  leaveBtn.addEventListener('click', () => untune(id));
+  bar.append(mute, vol, leaveBtn);
+  bar.addEventListener('dblclick', (e) => e.stopPropagation());
+  const s = state.screens.get(id);
+  vol.value = String(s?.vol ?? 1);
+  mute.hidden = vol.hidden = !s?.audible;
+  updateMuteButton(mute, s?.muted);
+  return bar;
 }
 
 function updateLiveRail() {
@@ -1670,7 +1698,6 @@ function renderWatch() {
   const ids = watchedIds();
   for (const [id, s] of state.screens) {
     if (ids.includes(id)) continue;
-    s.video.muted = true;
     s.video.srcObject = null;
   }
   const tiles = ids.map((id) => {
@@ -1692,8 +1719,6 @@ function renderWatch() {
       close.addEventListener('click', () => unwatch(id));
       tile.append(name, close);
     }
-    s.video.volume = Number($('screen-volume').value);
-    applyScreenAudio(s);
     s.video.play().catch(() => {});
     return tile;
   });
@@ -1701,6 +1726,7 @@ function renderWatch() {
   $('screen-box').classList.toggle('split', ids.length > 1);
   $('screen-label').textContent = ids.map((id) => state.screens.get(id).label).join('  +  ');
   $('screen-volume').parentElement.hidden = !ids.some((id) => state.screens.get(id).audible);
+  syncScreenBar();
   $('screen-view').hidden = false;
   updateLiveRail();
   sendWatching();
@@ -1802,6 +1828,7 @@ function tune(id) {
     s.card = createScreenCard(id, s.label, s.stream);
     $('live-list').append(s.card);
   }
+  syncScreenAudio(id);
   updateLiveRail();
   sendWatching();
 }
@@ -1812,29 +1839,85 @@ function untune(id) {
   const s = state.screens.get(id);
   s?.card?.remove();
   if (s) s.card = null;
+  syncScreenAudio(id);
   updateLiveRail();
   sendWatching();
 }
 
+// O som de cada transmissão aberta toca num <audio> próprio desde a
+// miniatura: abrir no centro ou voltar pra coluna não corta nada. O vídeo do
+// player fica sempre mudo.
+function syncScreenAudio(id) {
+  const s = state.screens.get(id);
+  if (!s) return;
+  if (!s.audible || !s.stream || !state.tuned.has(id)) {
+    s.audio?.remove();
+    s.audio = null;
+    return;
+  }
+  if (!s.audio) {
+    s.audio = document.createElement('audio');
+    s.audio.autoplay = true;
+    applySink(s.audio);
+    document.body.append(s.audio);
+  }
+  if (s.audio.srcObject !== s.stream) s.audio.srcObject = s.stream;
+  applyScreenAudio(s);
+  s.audio.play().catch(() => {});
+}
+
 function applyScreenAudio(s) {
-  s.video.muted = !s.audible || state.deaf || state.screenMuted;
-  $('screen-mute').classList.toggle('off', state.screenMuted);
-  $('screen-mute').title = state.screenMuted ? 'Desmutar a tela (M)' : 'Mutar a tela (M)';
+  if (s.audio) {
+    s.audio.muted = state.deaf || s.muted;
+    s.audio.volume = s.vol;
+  }
+  const controls = s.card?.querySelector('.card-controls');
+  if (controls) {
+    controls.querySelector('.card-volume').value = String(s.vol);
+    updateMuteButton(controls.querySelector('.card-mute'), s.muted);
+  }
 }
 
-function toggleScreenMute() {
-  state.screenMuted = !state.screenMuted;
-  for (const id of watchedIds()) applyScreenAudio(state.screens.get(id));
+function updateMuteButton(btn, muted) {
+  btn.classList.toggle('off', !!muted);
+  btn.title = muted ? 'Desmutar a transmissão (M)' : 'Mutar a transmissão (M)';
 }
 
-function setScreenVolume(v) {
+// A barra do player mostra o som da principal.
+function syncScreenBar() {
+  const s = state.screens.get(state.watching);
+  if (!s) return;
+  $('screen-volume').value = String(s.vol);
+  updateMuteButton($('screen-mute'), s.muted);
+}
+
+// Sem ids: as que estão abertas no centro.
+function toggleScreenMute(ids = watchedIds()) {
+  const list = ids.map((id) => state.screens.get(id)).filter(Boolean);
+  const muted = !list.every((s) => s.muted);
+  for (const s of list) {
+    s.muted = muted;
+    applyScreenAudio(s);
+  }
+  syncScreenBar();
+}
+
+function setScreenVolume(v, ids = watchedIds()) {
   const vol = Math.min(1, Math.max(0, v));
-  $('screen-volume').value = String(vol);
-  const ids = watchedIds();
-  if (!ids.length) return;
-  for (const id of ids) state.screens.get(id).video.volume = vol;
-  // Mexer no volume desmuta, igual player de vídeo.
-  if (state.screenMuted && vol > 0) toggleScreenMute();
+  for (const id of ids) {
+    const s = state.screens.get(id);
+    if (!s) continue;
+    s.vol = vol;
+    // Mexer no volume desmuta, igual player de vídeo.
+    if (vol > 0) s.muted = false;
+    applyScreenAudio(s);
+  }
+  syncScreenBar();
+}
+
+// Sai de vez: para de receber e tira da coluna.
+function leaveWatched() {
+  for (const id of watchedIds()) untune(id);
 }
 
 // Tela cheia: controles aparecem com o mouse e somem depois de parado.
@@ -1852,11 +1935,7 @@ function showScreenControls() {
 }
 
 function closeWatch() {
-  for (const id of watchedIds()) {
-    const v = state.screens.get(id).video;
-    v.muted = true;
-    v.srcObject = null;
-  }
+  for (const id of watchedIds()) state.screens.get(id).video.srcObject = null;
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   state.watching = null;
   state.watchingAlso = null;
@@ -1911,7 +1990,7 @@ function toggleDeaf() {
     setMuted(state.mutedBeforeDeaf);
   }
   for (const m of state.members.values()) applyMemberAudio(m);
-  for (const id of watchedIds()) applyScreenAudio(state.screens.get(id));
+  for (const s of state.screens.values()) applyScreenAudio(s);
   broadcast(myProfile());
   updateDock();
   renderSelf();
@@ -2802,7 +2881,7 @@ $('mic').addEventListener('change', () => {
 $('speaker').addEventListener('change', () => {
   savePref('speakerId', $('speaker').value);
   for (const m of state.members.values()) applySink(m.audio);
-  for (const s of state.screens.values()) applySink(s.video);
+  for (const s of state.screens.values()) if (s.audio) applySink(s.audio);
   applyCtxSink();
 });
 navigator.mediaDevices.addEventListener('devicechange', () => populateDevices().catch(console.warn));
@@ -2842,7 +2921,8 @@ $('screen-box').addEventListener('dblclick', (e) => {
   toggleFullscreen();
 });
 $('screen-volume').addEventListener('input', () => setScreenVolume(Number($('screen-volume').value)));
-$('screen-mute').addEventListener('click', toggleScreenMute);
+$('screen-mute').addEventListener('click', () => toggleScreenMute());
+$('screen-leave').addEventListener('click', leaveWatched);
 $('screen-view').addEventListener('mousemove', showScreenControls);
 // Atalhos assistindo: M muta, setas sobem/descem o volume.
 document.addEventListener('keydown', (e) => {
