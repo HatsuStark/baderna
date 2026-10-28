@@ -90,6 +90,14 @@ function narrate(kind, vars = {}) {
 }
 
 const $ = (id) => document.getElementById(id);
+
+// Registro de conexão em baderna.log (pasta do app, só neste PC): ajuda a
+// entender quem não conectou e por quê. Sem senhas nem chaves.
+function logEvent(...parts) {
+  const line = parts.map((p) => (typeof p === 'string' ? p : JSON.stringify(p))).join(' ');
+  window.baderna?.log?.(line);
+}
+const shortId = (id) => String(id).slice(0, 8);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const state = {
@@ -204,6 +212,8 @@ async function join() {
 
     setLobbyStatus('Conectando…');
     state.iceServers = await window.baderna?.iceServers?.().catch(() => null) ?? null;
+    const turns = (state.iceServers ?? []).filter((x) => [].concat(x.urls).some((u) => /^turns?:/.test(u))).length;
+    logEvent('entrar', { sala: room, nome: name, turn: turns ? 'sim' : 'não' });
     state.name = name;
     state.room = room;
     state.mainPeer = await openPeer();
@@ -392,8 +402,15 @@ function wireMainPeer() {
   });
 
   peer.on('error', (err) => {
-    // peer-unavailable: alguém da lista já tinha saído. Ignora.
-    if (err.type !== 'peer-unavailable') console.warn('main', err);
+    // peer-unavailable: alguém da lista já tinha saído (fantasma). Some da lista.
+    if (err.type === 'peer-unavailable') {
+      const id = /peer (\S+)/.exec(err.message ?? '')?.[1];
+      logEvent('servidor: ID não existe mais', id ? shortId(id) : '?');
+      if (id) removeMember(id, 'gone');
+      return;
+    }
+    logEvent('peer erro', err.type ?? '', err.message ?? '');
+    console.warn('main', err);
   });
 }
 
@@ -404,7 +421,7 @@ function connectTo(id, name, seq) {
     metadata: { name: state.name, seq: state.seq, avatar: state.avatar },
     reliable: true,
   }));
-  attachCall(member, state.mainPeer.call(id, state.sendStream));
+  attachCall(member, state.mainPeer.call(id, state.sendStream), true);
 }
 
 function upsertMember(id, { name, seq, avatar, muted, deaf }) {
@@ -436,11 +453,27 @@ function upsertMember(id, { name, seq, avatar, muted, deaf }) {
   return m;
 }
 
+// Conexão que não abre nesse tempo é desistida: ou a pessoa nem existe mais
+// (fantasma de quem fechou o app no meio da entrada) ou a rede bloqueou.
+const CONNECT_TIMEOUT_MS = 20_000;
+
 function attachConn(member, conn) {
   member.conn = conn;
+  logEvent('dados: iniciando', member.name, shortId(member.id));
+  const timer = setTimeout(() => {
+    if (member.conn !== conn || conn.open || state.members.get(member.id) !== member) return;
+    logEvent('dados: não abriu em 20 s', member.name, shortId(member.id));
+    removeMember(member.id, 'unreachable');
+  }, CONNECT_TIMEOUT_MS);
   conn.on('data', (msg) => handleMessage(member, msg));
-  conn.on('close', () => removeMember(member.id));
+  conn.on('close', () => {
+    if (member.conn !== conn) return;
+    logEvent('dados: fechou', member.name, shortId(member.id));
+    removeMember(member.id);
+  });
   conn.on('open', () => {
+    clearTimeout(timer);
+    logEvent('dados: aberto', member.name, shortId(member.id));
     watchIce(member, conn.peerConnection);
     conn.send(myProfile());
     sendMoviesTo(member);
@@ -456,14 +489,60 @@ function attachConn(member, conn) {
   });
 }
 
-function attachCall(member, call) {
+// Voz: quem ligou (outgoing) tenta de novo se a chamada falhar com os dados
+// ainda conectados; quem recebe só troca pela chamada nova.
+const VOICE_RETRY_MAX = 2;
+const VOICE_RETRY_DELAY_MS = 3000;
+
+function attachCall(member, call, outgoing = false) {
+  const old = member.call;
   member.call = call;
+  if (old && old !== call) old.close();
   call.on('stream', (stream) => {
     member.audio.srcObject = stream;
     member.audio.play().catch(() => {});
     addMeter(member.id, stream);
   });
-  call.on('close', () => removeMember(member.id));
+  call.on('close', () => {
+    if (member.call !== call) return;
+    if (member.conn?.open) retryVoice(member, outgoing);
+    else removeMember(member.id);
+  });
+  const pc = call.peerConnection;
+  pc?.addEventListener('iceconnectionstatechange', () => {
+    if (member.call !== call) return;
+    const st = pc.iceConnectionState;
+    logEvent('voz:', st, member.name, shortId(member.id));
+    if (st === 'connected' || st === 'completed') logVoicePath(member, pc);
+    if (st === 'failed') retryVoice(member, outgoing);
+  });
+}
+
+function retryVoice(member, outgoing) {
+  if (!outgoing || !state.members.has(member.id)) return;
+  member.voiceRetries = (member.voiceRetries ?? 0) + 1;
+  if (member.voiceRetries > VOICE_RETRY_MAX) {
+    logEvent('voz: desisti', member.name, shortId(member.id));
+    return;
+  }
+  logEvent('voz: tentando de novo', member.voiceRetries, member.name);
+  setTimeout(() => {
+    if (!state.members.has(member.id) || !member.conn?.open || !state.mainPeer) return;
+    attachCall(member, state.mainPeer.call(member.id, state.sendStream), true);
+  }, VOICE_RETRY_DELAY_MS);
+}
+
+async function logVoicePath(member, pc) {
+  const stats = await pc.getStats().catch(() => null);
+  if (!stats) return;
+  stats.forEach((r) => {
+    if (r.type !== 'transport' || !r.selectedCandidatePairId) return;
+    const pair = stats.get(r.selectedCandidatePairId);
+    const local = pair && stats.get(pair.localCandidateId);
+    const remote = pair && stats.get(pair.remoteCandidateId);
+    logEvent('voz: caminho', member.name, `${local?.candidateType}/${local?.protocol} -> ${remote?.candidateType}`,
+      pair?.currentRoundTripTime != null ? `${Math.round(pair.currentRoundTripTime * 1000)} ms` : '');
+  });
 }
 
 // PeerJS nem sempre dispara "close" quando o outro lado some; olha o ICE.
@@ -548,13 +627,21 @@ function removeMember(id, reason) {
   m.seat.remove();
   removeMeter(id);
   updateCount();
+  logEvent('saiu da lista', m.name, shortId(id), reason ?? 'caiu');
   if (state.leaving) return;
-  if (reason !== 'bye') statOf(m.name).drops++;
   if (personMenuFor === m) closePersonMenu();
   updateLiveRail();
+  // Host inalcançável por mim não quer dizer que saiu: os outros ainda o veem.
+  if (id === state.hostId && reason !== 'unreachable') handleHostLeft();
+  // Nunca chegou a conectar: fantasma some quieto; gente de verdade, um aviso.
+  if (reason === 'gone') return;
+  if (reason === 'unreachable') {
+    addSystem(`Não deu pra conectar com ${m.name} (a rede de um de vocês bloqueou).`);
+    return;
+  }
+  if (reason !== 'bye') statOf(m.name).drops++;
   playBlip(false);
   addSystem(narrate(reason === 'bye' ? 'left' : 'dropped', { n: m.name }));
-  if (id === state.hostId) handleHostLeft();
 }
 
 // ---------- Chat ----------

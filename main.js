@@ -164,6 +164,22 @@ ipcMain.handle('screen:select', (_e, id) => {
   pendingSourceId = typeof id === 'string' ? id : null;
 });
 
+// ---------- Registro de conexão (baderna.log) ----------
+// Só neste PC, na pasta de dados do app. Passou de 2 MB, vira baderna.old.log.
+
+const LOG_MAX_BYTES = 2 * 1024 * 1024;
+
+ipcMain.on('log', (_e, line) => {
+  if (typeof line !== 'string') return;
+  const file = path.join(app.getPath('userData'), 'baderna.log');
+  try {
+    if (fs.existsSync(file) && fs.statSync(file).size > LOG_MAX_BYTES) {
+      fs.renameSync(file, path.join(app.getPath('userData'), 'baderna.old.log'));
+    }
+    fs.appendFileSync(file, `${new Date().toISOString()} v${app.getVersion()} ${line.slice(0, 500).replace(/[\r\n]+/g, ' ')}\n`);
+  } catch {}
+});
+
 // ---------- Atalhos globais (mutar / silenciar) ----------
 // Valem com o app minimizado. A ação vai pro renderer igual ao menu da bandeja.
 

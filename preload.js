@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('baderna', {
   searchMovies: (query) => ipcRenderer.invoke('movies:search', query),
   setHotkeys: (keys) => ipcRenderer.invoke('hotkeys:set', keys),
   iceServers: () => ipcRenderer.invoke('ice:servers'),
+  log: (line) => ipcRenderer.send('log', line),
   onUpdateReady: (cb) => subscribe('update:ready', cb),
   updateStatus: () => ipcRenderer.invoke('update:status'),
   installUpdate: () => ipcRenderer.send('update:install'),
