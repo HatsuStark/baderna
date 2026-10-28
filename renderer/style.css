@@ -628,3 +628,5 @@ label.check input { width: auto; }
   background: rgba(0, 0, 0, .7); border: 1px solid var(--line); color: #fff; opacity: 0; transition: opacity .15s;
 }
 .live-card:hover .card-close { opacity: 1; }
+.gate-mark.auto { background: repeating-linear-gradient(to bottom, var(--amber) 0 3px, transparent 3px 5px); box-shadow: none; opacity: .85; }
+.gate-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: -4px; }

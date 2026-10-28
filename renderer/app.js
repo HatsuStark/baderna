@@ -101,6 +101,8 @@ const state = {
   mic: null,          // { src, gate, dest }: microfone → portão → o que vai pros outros
   sendStream: null,   // saída do portão: é isto que vai nas chamadas
   gateOpen: true,
+  gateLevel: 0,       // nível da faixa de voz medido pelo portão
+  gateThreshold: 0,   // limiar em uso (o automático muda sozinho)
   myId: null,
   seq: 0,          // ordem de entrada; define quem herda o host
   nextSeq: 1,      // só usado pelo host
@@ -1738,7 +1740,13 @@ async function buildMicChain() {
   await ctx.resume();
   await ctx.audioWorklet.addModule('gate-worklet.js');
   const gate = new AudioWorkletNode(ctx, 'mic-gate');
-  gate.port.onmessage = (e) => { state.gateOpen = !!e.data?.open; };
+  // O portão conta, ~20×/s, se está aberto, o nível da faixa de voz e o limiar em uso.
+  gate.port.onmessage = (e) => {
+    const d = e.data ?? {};
+    state.gateOpen = !!d.open;
+    state.gateLevel = Number(d.level) || 0;
+    state.gateThreshold = Number(d.threshold) || 0;
+  };
   const dest = ctx.createMediaStreamDestination();
   gate.connect(dest);
   state.mic = { src: null, gate, dest };
@@ -1763,21 +1771,32 @@ function gateDb() {
 
 function applyGate() {
   const db = gateDb();
-  if (db === null) state.gateOpen = true;
-  state.mic?.gate.port.postMessage({ threshold: db === null ? 0 : 10 ** (db / 20) });
-  const pct = db === null ? 0 : ((db - GATE_DB_MIN) / (GATE_DB_MAX - GATE_DB_MIN)) * 100;
-  $('mic-gate-mark').style.left = `${pct}%`;
-  $('mic-gate-mark').hidden = db === null;
+  state.mic?.gate.port.postMessage(db === null ? { mode: 'auto' } : { mode: 'manual', threshold: 10 ** (db / 20) });
+  placeGateMark(db);
   $('mic-gate-auto').checked = db === null;
   $('mic-gate').disabled = db === null;
   $('mic-gate').value = String(db ?? -45);
 }
 
-function showMicLevel(level) {
-  const db = level > 0 ? 20 * Math.log10(level) : -100;
-  const pct = ((db - GATE_DB_MIN) / (GATE_DB_MAX - GATE_DB_MIN)) * 100;
-  $('mic-level').style.width = `${Math.min(100, Math.max(0, pct))}%`;
-  const gate = gateDb();
+const gatePct = (db) => Math.min(100, Math.max(0, ((db - GATE_DB_MIN) / (GATE_DB_MAX - GATE_DB_MIN)) * 100));
+const toDb = (v) => (v > 0 ? 20 * Math.log10(v) : -100);
+
+// Linha do limiar: fixa no manual; no automático (tracejada), onde o portão
+// calculou a partir do ruído de fundo (só na sala, onde o portão existe).
+function placeGateMark(manualDb) {
+  const autoDb = state.mic && state.gateThreshold ? toDb(state.gateThreshold) : null;
+  const db = manualDb ?? autoDb;
+  $('mic-gate-mark').hidden = db === null;
+  $('mic-gate-mark').classList.toggle('auto', manualDb === null);
+  if (db !== null) $('mic-gate-mark').style.left = `${gatePct(db)}%`;
+  return db;
+}
+
+// Na sala mostra o que o portão "ouve" (faixa de voz); no lobby, o mic cru.
+function showMicLevel(rawLevel) {
+  const db = toDb(state.mic ? state.gateLevel : rawLevel);
+  $('mic-level').style.width = `${gatePct(db)}%`;
+  const gate = placeGateMark(gateDb());
   $('mic-meter').classList.toggle('below', gate !== null && db < gate);
 }
 

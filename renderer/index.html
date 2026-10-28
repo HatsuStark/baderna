@@ -137,9 +137,10 @@
       </label>
       <div class="sensitivity">
         <div id="mic-meter" class="meter big" title="Fale pra testar"><div id="mic-level"></div><div id="mic-gate-mark" class="gate-mark" hidden></div></div>
-        <label class="check"><input type="checkbox" id="mic-gate-auto"> Sensibilidade automática</label>
+        <label class="check"><input type="checkbox" id="mic-gate-auto"> Sensibilidade automática (se ajusta ao ruído do seu ambiente)</label>
         <input id="mic-gate" type="range" min="-70" max="-10" step="1" aria-label="Sensibilidade do microfone">
-        <p class="status">Som abaixo da linha não é enviado. Ajuste pra barra passar da linha só quando você fala.</p>
+        <div class="gate-scale"><span>pega tudo</span><span>só voz alta</span></div>
+        <p class="status">Som abaixo da linha não é enviado. Ajuste pra barra passar da linha só quando você fala; estalos rápidos (teclado, clique) são ignorados.</p>
       </div>
       <label>Saída de som
         <select id="speaker"></select>
