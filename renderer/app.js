@@ -282,6 +282,10 @@ async function teardown() {
   closeWatch();
   for (const id of [...state.members.keys()]) removeMember(id);
   for (const id of [...state.screens.keys()]) unregisterScreen(id);
+  dialQueue.length = 0;
+  clearTimeout(dialTimer);
+  dialTimer = 0;
+  clearTimeout(state.redialTimer);
   destroyPeer(state.beacon);
   destroyPeer(state.mainPeer);
   state.localStream?.getTracks().forEach((t) => t.stop());
@@ -406,15 +410,25 @@ function wireMainPeer() {
   // perdeu; disca de novo pra quem ainda não abriu.
   peer.on('open', () => {
     logEvent('servidor: reconectado');
-    for (const m of state.members.values()) {
-      if (m.outgoing && !m.conn?.open && m.connAttempts < CONNECT_ATTEMPTS) redial(m, 'servidor voltou');
-    }
+    clearTimeout(state.redialTimer);
+    state.redialTimer = setTimeout(() => {
+      for (const m of state.members.values()) {
+        if (m.outgoing && !m.conn?.open && m.connAttempts < CONNECT_ATTEMPTS) redial(m, 'servidor voltou');
+      }
+    }, REDIAL_AFTER_RECONNECT_MS);
   });
 
   peer.on('error', (err) => {
     // peer-unavailable: alguém da lista já tinha saído (fantasma). Some da lista.
     if (err.type === 'peer-unavailable') {
       const id = /peer (\S+)/.exec(err.message ?? '')?.[1];
+      const m = id && state.members.get(id);
+      // Só é fantasma quem EU disquei a partir da lista do host. Quem discou pra
+      // mim existe: o "não existe" é ele reconectando ao servidor naquele instante.
+      if (m && !m.outgoing) {
+        logEvent('servidor: ID sumiu por um instante (ignorado)', m.name, shortId(id));
+        return;
+      }
       logEvent('servidor: ID não existe mais', id ? shortId(id) : '?');
       if (id) removeMember(id, 'gone');
       return;
@@ -428,25 +442,44 @@ function connectTo(id, name, seq) {
   if (id === state.myId || state.members.has(id)) return;
   const member = upsertMember(id, { name, seq });
   member.outgoing = true; // eu disco: sou eu que tento de novo se não abrir
-  dialMember(member);
+  queueDial(member);
+}
+
+// Discagem em fila, uma pessoa por vez: discar pra todo mundo de uma vez
+// manda centenas de mensagens pelo servidor do PeerJS num instante, e ele
+// derruba quem manda demais (o baderna.log mostrou isso ao entrar em sala
+// cheia). A voz só é chamada depois que os dados abrem (attachConn).
+const DIAL_GAP_MS = 600;
+const dialQueue = [];
+let dialTimer = 0;
+
+function queueDial(member) {
+  if (!dialQueue.includes(member)) dialQueue.push(member);
+  if (!dialTimer) dialTimer = setTimeout(dialNext, 0);
+}
+
+function dialNext() {
+  dialTimer = 0;
+  const member = dialQueue.shift();
+  if (!member) return;
+  if (state.mainPeer && state.members.get(member.id) === member && !member.conn?.open) dialMember(member);
+  if (dialQueue.length) dialTimer = setTimeout(dialNext, DIAL_GAP_MS);
 }
 
 function dialMember(member) {
   member.connAttempts = (member.connAttempts ?? 0) + 1;
+  const old = member.conn;
   attachConn(member, state.mainPeer.connect(member.id, {
     metadata: { name: state.name, seq: state.seq, avatar: state.avatar },
     reliable: true,
   }));
-  attachCall(member, state.mainPeer.call(member.id, state.sendStream), true);
+  old?.close();
 }
 
-// Conexão que não abriu: quem discou tenta de novo (a combinação pelo
-// servidor do PeerJS às vezes se perde quando ele cai bem na hora).
+// Conexão que não abriu: quem discou tenta de novo, pela fila.
 function redial(member, why) {
-  const old = member.conn;
   logEvent('dados: tentando de novo', member.connAttempts + 1, why, member.name, shortId(member.id));
-  dialMember(member);
-  old?.close();
+  queueDial(member);
 }
 
 function upsertMember(id, { name, seq, avatar, muted, deaf }) {
@@ -482,6 +515,7 @@ function upsertMember(id, { name, seq, avatar, muted, deaf }) {
 // (fantasma de quem fechou o app no meio da entrada) ou a rede bloqueou.
 const CONNECT_TIMEOUT_MS = 20_000;
 const CONNECT_ATTEMPTS = 3;
+const REDIAL_AFTER_RECONNECT_MS = 2000;
 
 function attachConn(member, conn) {
   member.conn = conn;
@@ -501,6 +535,9 @@ function attachConn(member, conn) {
   conn.on('open', () => {
     clearTimeout(timer);
     logEvent('dados: aberto', member.name, shortId(member.id));
+    if (member.outgoing && state.mainPeer && !['connected', 'completed'].includes(member.call?.peerConnection?.iceConnectionState)) {
+      attachCall(member, state.mainPeer.call(member.id, state.sendStream), true);
+    }
     watchIce(member, conn.peerConnection);
     conn.send(myProfile());
     sendMoviesTo(member);

@@ -277,8 +277,11 @@ async function turnServers() {
     });
     if (!res.ok) throw new Error(`Cloudflare respondeu ${res.status}`);
     const data = await res.json();
+    // Só UDP 3478 e TLS 443 (passa até em rede que bloqueia UDP): cada
+    // endereço a mais vira candidatos a mais trocados pelo servidor do PeerJS.
+    const keep = (u) => /^turn:.*:3478\?transport=udp$/.test(u) || /^turns:.*:443\?transport=tcp$/.test(u);
     return validIceServers([].concat(data.iceServers ?? []))
-      .map((s) => ({ ...s, urls: [].concat(s.urls).filter((u) => /^turns?:/.test(u)) }))
+      .map((s) => ({ ...s, urls: [].concat(s.urls).filter(keep) }))
       .filter((s) => s.urls.length);
   }
   if (cfg.metered?.app && cfg.metered?.apiKey) {
