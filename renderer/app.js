@@ -1628,15 +1628,17 @@ function createCardControls(id) {
   return bar;
 }
 
+// A que está aberta no centro some da coluna (✕ no centro traz de volta).
 function updateLiveRail() {
-  const any = $('live-list').children.length > 0;
+  const watched = watchedIds();
+  const cards = [...$('live-list').children];
+  for (const card of cards) card.hidden = watched.includes(card.dataset.id);
+  const any = cards.some((card) => !card.hidden);
   $('live-rail').hidden = !any;
   $('room-view').querySelector('.center').classList.toggle('has-live', any);
   for (const id of state.screens.keys()) updateSeatLive(id);
-  const watched = watchedIds();
-  for (const card of $('live-list').children) {
+  for (const card of cards) {
     const id = card.dataset.id;
-    card.classList.toggle('watching', watched.includes(id));
     card.classList.toggle('can-side', !!state.watching && !watched.includes(id));
     const names = [...state.members.values()].filter((m) => m.watchingIds?.includes(id)).map((m) => m.name);
     card.querySelector('.viewers').textContent = names.length ? `👁 ${names.join(', ')}` : '';
