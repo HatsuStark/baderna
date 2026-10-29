@@ -8,8 +8,12 @@
 // - Abaixo do limiar por HOLD, fecha devagar (sem estalo).
 // - Automático: mede o ruído de fundo o tempo todo e usa ruído + ~6 dB. Som
 //   bem acima do ruído é tratado como voz e não entra nessa conta.
+// - Com a redução de ruído por IA ligada (denoise-worklet.js), o automático
+//   decide pela chance de ser voz que ela manda a cada 10 ms, não pelo volume:
+//   teclado alto não abre, voz baixa abre.
 //
-// Mensagens: entra { mode: 'auto' } ou { mode: 'manual', threshold };
+// Mensagens: entra { mode: 'auto' } ou { mode: 'manual', threshold }, e uma
+// vez { vadPort } (MessagePort ligado à IA);
 // sai { open, level, threshold } ~20 vezes por segundo (medidor e linha).
 
 const LOOKAHEAD_S = 0.02;
@@ -21,6 +25,9 @@ const AUTO_MARGIN = 2;                // ~ +6 dB acima do ruído de fundo
 const AUTO_MIN = 10 ** (-58 / 20);    // limiar automático nunca abaixo disso...
 const AUTO_MAX = 10 ** (-24 / 20);    // ...nem acima disso
 const REPORT_S = 0.05;
+const VAD_OPEN = 0.6;    // chance de voz pra abrir...
+const VAD_KEEP = 0.3;    // ...e pra continuar aberto
+const VAD_FRESH_S = 0.1; // sem notícia da IA por mais que isso, volta pro volume
 
 // Biquad (RBJ) de 2ª ordem.
 function biquad(type, freq, q = Math.SQRT1_2) {
@@ -58,8 +65,17 @@ class GateProcessor extends AudioWorkletProcessor {
     this.pos = 0;
     this.sinceReport = 0;
     this.level = 0;
+    this.vad = 0;
+    this.vadAt = -1;
     this.port.onmessage = (e) => {
       const d = e.data ?? {};
+      if (d.vadPort) {
+        d.vadPort.onmessage = (ev) => {
+          this.vad = Number(ev.data) || 0;
+          this.vadAt = currentTime;
+        };
+        return;
+      }
       this.auto = d.mode !== 'manual';
       const t = Number(d.threshold);
       this.manual = Number.isFinite(t) && t > 0 ? t : 0;
@@ -95,7 +111,10 @@ class GateProcessor extends AudioWorkletProcessor {
     this.floor += (rms - this.floor) * rate;
 
     const threshold = this.threshold();
-    const loud = threshold > 0 && rms >= threshold;
+    const useVad = this.auto && currentTime - this.vadAt < VAD_FRESH_S;
+    const loud = useVad
+      ? this.vad >= (this.open ? VAD_KEEP : VAD_OPEN) && rms >= AUTO_MIN
+      : threshold > 0 && rms >= threshold;
     this.above = loud ? this.above + n : 0;
     if (!this.open && this.above >= OPEN_AFTER_S * sampleRate) {
       this.open = true;

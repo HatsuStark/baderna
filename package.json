@@ -30,6 +30,7 @@
       "tmdb-key.txt",
       "turn.json",
       "node_modules/peerjs/dist/peerjs.min.js",
+      "node_modules/@jitsi/rnnoise-wasm/dist/rnnoise-sync.js",
       "package.json"
     ],
     "extraResources": [
@@ -59,6 +60,7 @@
     }
   },
   "dependencies": {
+    "@jitsi/rnnoise-wasm": "^0.2.1",
     "electron-updater": "^6.8.11",
     "peerjs": "^1.5.4"
   },

@@ -30,10 +30,13 @@ const CHAT_GROUP_MS = 2 * 60 * 1000;
 
 // Processamento do Chrome no microfone; cada um liga/desliga nas configurações.
 const AUDIO_PROCESSING = {
-  noiseSuppression: 'Supressão de ruído',
   echoCancellation: 'Cancelamento de eco',
   autoGainControl: 'Ganho automático',
 };
+
+// Redução de ruído: Forte = IA (denoise-worklet.js, no lugar da do Chrome);
+// Normal = a do Chrome.
+const NOISE_MODES = { ai: 'Forte (IA)', normal: 'Normal', off: 'Desligada' };
 
 // Sensibilidade: escala do medidor e do limiar do portão, em dB.
 const GATE_DB_MIN = -70;
@@ -2010,7 +2013,8 @@ async function switchMic(deviceId) {
 
 function audioContext() {
   if (!state.audioCtx) {
-    state.audioCtx = new AudioContext();
+    // 48 kHz: taxa da IA de ruído e do Opus.
+    state.audioCtx = new AudioContext({ sampleRate: 48000 });
     applyCtxSink();
   }
   return state.audioCtx;
@@ -2030,17 +2034,45 @@ async function buildMicChain() {
   };
   const dest = ctx.createMediaStreamDestination();
   gate.connect(dest);
-  state.mic = { src: null, gate, dest };
+  state.mic = { src: null, denoise: await createDenoise(ctx, gate), gate, dest };
   state.sendStream = dest.stream;
   connectMicSource(state.localStream);
   applyGate();
+}
+
+// IA de ruído na frente do portão; a chance de voz vai direto pra ele por um
+// MessagePort. Se não carregar, segue sem ela (só o portão por volume).
+async function createDenoise(ctx, gate) {
+  try {
+    await ctx.audioWorklet.addModule('denoise-worklet.js');
+    const node = new AudioWorkletNode(ctx, 'mic-denoise', {
+      channelCount: 1, channelCountMode: 'explicit', outputChannelCount: [1],
+    });
+    const { port1, port2 } = new MessageChannel();
+    node.port.postMessage({ vadPort: port1 }, [port1]);
+    gate.port.postMessage({ vadPort: port2 }, [port2]);
+    node.connect(gate);
+    return node;
+  } catch (err) {
+    console.warn('denoise', err);
+    logEvent('ia-ruido', { erro: String(err?.message ?? err) });
+    return null;
+  }
+}
+
+function noiseMode() {
+  const v = loadPref('noise');
+  if (v in NOISE_MODES) return v;
+  // Antes era só a caixinha do Chrome: quem desligou continua desligado.
+  return loadPref('noiseSuppression') === 'off' ? 'off' : 'ai';
 }
 
 function connectMicSource(stream) {
   if (!state.mic) return;
   state.mic.src?.disconnect();
   state.mic.src = audioContext().createMediaStreamSource(stream);
-  state.mic.src.connect(state.mic.gate);
+  const ai = noiseMode() === 'ai' && state.mic.denoise;
+  state.mic.src.connect(ai ? state.mic.denoise : state.mic.gate);
 }
 
 // null = automático (sem portão, só a supressão de ruído).
@@ -2268,7 +2300,10 @@ function tick() {
 // ---------- Dispositivos e teste de microfone (lobby) ----------
 
 function micConstraints() {
-  return Object.fromEntries(Object.keys(AUDIO_PROCESSING).map((k) => [k, loadPref(k) !== 'off']));
+  return {
+    ...Object.fromEntries(Object.keys(AUDIO_PROCESSING).map((k) => [k, loadPref(k) !== 'off'])),
+    noiseSuppression: noiseMode() === 'normal',
+  };
 }
 
 function openMic(deviceId) {
@@ -3123,6 +3158,19 @@ $('mic-gate').addEventListener('input', () => {
 });
 applyGate();
 
+// Reabre o mic: a do Chrome muda no getUserMedia e a IA na ligação do portão.
+function reopenMic() {
+  if (state.mainPeer) switchMic($('mic').value).catch((err) => addSystem(`Não deu pra reabrir o microfone: ${describeError(err)}`));
+  else startPreview();
+}
+
+$('noise-mode').replaceChildren(...Object.entries(NOISE_MODES).map(([value, label]) => new Option(label, value)));
+$('noise-mode').value = noiseMode();
+$('noise-mode').addEventListener('change', () => {
+  savePref('noise', $('noise-mode').value);
+  reopenMic();
+});
+
 $('audio-processing').replaceChildren(...Object.entries(AUDIO_PROCESSING).map(([key, label]) => {
   const row = document.createElement('label');
   row.className = 'check';
@@ -3131,8 +3179,7 @@ $('audio-processing').replaceChildren(...Object.entries(AUDIO_PROCESSING).map(([
   box.checked = loadPref(key) !== 'off';
   box.addEventListener('change', () => {
     savePref(key, box.checked ? 'on' : 'off');
-    if (state.mainPeer) switchMic($('mic').value).catch((err) => addSystem(`Não deu pra reabrir o microfone: ${describeError(err)}`));
-    else startPreview();
+    reopenMic();
   });
   row.append(box, document.createTextNode(label));
   return row;
