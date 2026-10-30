@@ -1,7 +1,7 @@
 'use strict';
 
 // Fundos da sala, desenhados em SVG (viewBox 1440x900, cortado pra cobrir).
-// O host escolhe; o id viaja pela rede e só é aceito se existir aqui.
+// Qualquer um escolhe; o id viaja pela rede e só é aceito se existir aqui.
 
 const THEME_DEFS = `
   <filter id="th-grain"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/>

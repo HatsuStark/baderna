@@ -1,13 +1,13 @@
 'use strict';
 
 // Topologia: mesh de voz. Cada pessoa tem um peer "main" com ID aleatório,
-// usado pra mídia e dados. O host também segura um peer "beacon" com o ID
-// fixo da sala (ROOM_PREFIX + código); quem entra fala com o beacon só pra
-// receber a lista de membros e depois conecta direto em cada um.
-// Se o host sai, o membro mais antigo (menor seq) assume o beacon.
+// usado pra mídia e dados. Um deles (o "host", que ninguém vê: a sala não tem
+// dono) também segura um peer "beacon" com o ID fixo da sala (ROOM_PREFIX +
+// código); quem entra fala com o beacon só pra receber a lista de membros e
+// depois conecta direto em cada um. Se ele sai, o membro mais antigo (menor
+// seq) assume o beacon.
 //
-// Mensagens no DataChannel: profile (nome/boneco/mudo), chat, theme (só do
-// host), host, screen-stop, bye, movies (lista de filmes, em movies.js),
+// Mensagens no DataChannel: profile (nome/boneco/mudo), chat, theme, host, screen-stop, bye, movies (lista de filmes, em movies.js),
 // watching (quais transmissões cada um tem abertas: só essas recebem vídeo),
 // preview (foto da tela de quem transmite, a cada 4 s), caps (o que esta versão
 // sabe fazer), screen-live (comecei a transmitir: a chamada de vídeo só sai
@@ -81,9 +81,6 @@ const NARRATION = {
     'Você abriu a {c}. Agora é esperar o pessoal (que sempre atrasa).',
   ],
   entered: ['Você entrou na sala {c}.', 'Você brotou na {c}. Fala aí!', 'Você chegou na {c} chutando a porta.'],
-  newHost: ['{n} agora é o dono da bola.', '{n} pegou a faixa de capitão.', '{n} virou host. Respeita.'],
-  meHost: ['Você agora é o dono da bola.', 'A faixa de capitão é sua: você é o host.'],
-  hostGone: ['O dono da bola foi embora. Pegando a bola…', 'O host vazou. Assumindo a sala…'],
   renamed: ['{b} agora atende por {n}.', '{b} trocou de nome: agora é {n}.'],
   theme: ['{n} mudou o tema pra {t}.', '{n} redecorou: agora é {t}.', '{n} trocou o cenário pra {t}.'],
 };
@@ -363,18 +360,15 @@ function handleHostLeft() {
   state.hostId = candidates[0].id;
   renderAll();
   if (state.hostId === state.myId) claimBeaconWithRetry();
-  else addSystem(narrate('newHost', { n: state.members.get(state.hostId)?.name ?? 'Alguém' }));
 }
 
 async function claimBeaconWithRetry() {
-  addSystem(narrate('hostGone'));
   // O servidor do PeerJS pode demorar pra liberar o ID se o host caiu sem fechar.
   for (let i = 0; i < BEACON_MAX_TRIES; i++) {
     if (!state.mainPeer || state.hostId !== state.myId) return;
     try {
       if (await tryClaimBeacon()) {
         becomeHost();
-        addSystem(narrate('meHost'));
         return;
       }
     } catch (err) {
@@ -753,10 +747,10 @@ function handleMessage(member, msg) {
       if (typeof msg.text === 'string' && msg.text.trim()) addChat(member.id, member.name, member.avatar, msg.text);
       break;
     case 'theme':
-      // Só o host manda no tema.
-      if (member.id === state.hostId && THEMES[msg.theme] && msg.theme !== state.theme) {
+      if (THEMES[msg.theme] && msg.theme !== state.theme) {
         applyTheme(msg.theme);
         addSystem(narrate('theme', { n: member.name, t: THEMES[msg.theme].name }));
+        rememberRoomTheme();
       }
       break;
     case 'host':
@@ -907,14 +901,13 @@ const AWARDS = [
   { key: 'muted', icon: '🧘', title: 'Monge do Mute', min: 60_000, text: (v) => `${formatDuration(v)} no mudo` },
   { key: 'chats', icon: '⌨️', title: 'Dedo Nervoso', min: 5, text: (v) => `${v} mensagens no chat` },
   { key: 'share', icon: '📽️', title: 'Projetor Humano', min: 60_000, text: (v) => `${formatDuration(v)} de telão` },
-  { key: 'host', icon: '👑', title: 'Dono da Bola', min: 60_000, text: (v) => `${formatDuration(v)} de host` },
   { key: 'drops', icon: '🚧', title: 'Cone da Rodada', min: 1, text: (v) => (v === 1 ? 'caiu 1 vez' : `caiu ${v} vezes`) },
 ];
 
 function statOf(name) {
   let s = state.stats.get(name);
   if (!s) {
-    s = { talk: 0, muted: 0, chats: 0, share: 0, host: 0, drops: 0, present: 0, avatar: null };
+    s = { talk: 0, muted: 0, chats: 0, share: 0, drops: 0, present: 0, avatar: null };
     state.stats.set(name, s);
   }
   return s;
@@ -922,9 +915,9 @@ function statOf(name) {
 
 function sampleStats() {
   const people = [
-    { name: state.name, avatar: state.avatar, muted: state.muted || state.deaf, sharing: !!state.screen, host: state.hostId === state.myId },
+    { name: state.name, avatar: state.avatar, muted: state.muted || state.deaf, sharing: !!state.screen },
     ...[...state.members.values()].filter((m) => m.name !== '…').map((m) => ({
-      name: m.name, avatar: m.avatar, muted: m.muted || m.deaf, sharing: state.screens.has(m.id), host: state.hostId === m.id,
+      name: m.name, avatar: m.avatar, muted: m.muted || m.deaf, sharing: state.screens.has(m.id),
     })),
   ];
   for (const p of people) {
@@ -933,7 +926,6 @@ function sampleStats() {
     s.present += STATS_SAMPLE_MS;
     if (p.muted) s.muted += STATS_SAMPLE_MS;
     if (p.sharing) s.share += STATS_SAMPLE_MS;
-    if (p.host) s.host += STATS_SAMPLE_MS;
   }
 }
 
@@ -1000,7 +992,7 @@ function applyTheme(id) {
 }
 
 function setTheme(id) {
-  if (state.hostId !== state.myId || !THEMES[id] || id === state.theme) return;
+  if (!THEMES[id] || id === state.theme) return;
   applyTheme(id);
   broadcast({ type: 'theme', theme: id });
   addSystem(`Você mudou o tema pra ${THEMES[id].name}.`);
@@ -2543,7 +2535,7 @@ function createSeat(member) {
   return seat;
 }
 
-function fillSeat(seat, { id, name, avatar, host, muted, deaf, sharing, self, silenced }) {
+function fillSeat(seat, { id, name, avatar, muted, deaf, sharing, self, silenced }) {
   const key = JSON.stringify(avatar);
   if (seat.dataset.avatar !== key) {
     seat.dataset.avatar = key;
@@ -2560,7 +2552,6 @@ function fillSeat(seat, { id, name, avatar, host, muted, deaf, sharing, self, si
     if (onClick) el.addEventListener('click', onClick);
     badges.push(el);
   };
-  if (host) badge('host', 'HOST');
   if (deaf) badge('deaf', 'SURDO');
   else if (muted) badge('muted', 'MUDO');
   if (silenced) badge('silenced', 'SILENCIADO P/ MIM');
@@ -2569,7 +2560,7 @@ function fillSeat(seat, { id, name, avatar, host, muted, deaf, sharing, self, si
 
 function renderSeat(m) {
   fillSeat(m.seat, {
-    id: m.id, name: m.name, avatar: m.avatar, host: m.id === state.hostId,
+    id: m.id, name: m.name, avatar: m.avatar,
     muted: m.muted, deaf: m.deaf, sharing: state.screens.has(m.id), silenced: personPref(m.name).mute,
   });
   // Nome e rosto podem chegar depois da transmissão: atualiza o card dela.
@@ -2583,7 +2574,7 @@ function renderSeat(m) {
 function renderSelf() {
   if (!state.selfSeat) return;
   fillSeat(state.selfSeat, {
-    id: state.myId, name: state.name, avatar: state.avatar, host: state.myId === state.hostId,
+    id: state.myId, name: state.name, avatar: state.avatar,
     muted: state.muted, deaf: state.deaf, sharing: !!state.screen, self: true,
   });
 }
@@ -2675,7 +2666,6 @@ window.addEventListener('resize', layoutSeats);
 function renderAll() {
   renderSelf();
   for (const m of state.members.values()) renderSeat(m);
-  updateThemeControls();
 }
 
 function updateCount() {
@@ -2704,12 +2694,6 @@ function updateDock() {
   $('btn-share').classList.toggle('on', !!state.screen);
   $('btn-share').title = state.screen ? 'Parar de compartilhar' : 'Compartilhar tela';
   syncTray();
-}
-
-function updateThemeControls() {
-  const host = state.hostId === state.myId;
-  $('theme-select').disabled = !host;
-  $('theme-select').title = host ? 'Muda pra todo mundo da sala' : 'Só o host escolhe o tema';
 }
 
 // ---------- Editor de boneco ----------
@@ -2844,7 +2828,6 @@ function loadAvatar() {
 
 function openSettings(inRoom) {
   applyTheme(state.theme);
-  updateThemeControls();
   $('settings-face').innerHTML = avatarFaceSvg(state.avatar);
   $('settings-dialog').classList.toggle('lobby-mode', !inRoom);
   $('settings-dialog').showModal();
