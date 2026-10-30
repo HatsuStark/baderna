@@ -1,7 +1,7 @@
 {
   "name": "baderna",
   "productName": "Baderna",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "Baderna: voz e tela P2P entre amigos",
   "main": "main.js",
   "private": true,
