@@ -281,6 +281,11 @@ async function leave() {
 
 async function teardown() {
   state.leaving = true;
+  for (const w of watchedPaths) await pollPath(w);
+  logRelaySummary(true);
+  relayUsage.clear();
+  watchedPaths.clear();
+  relayLogged = 0;
   stopShare();
   closeWatch();
   for (const id of [...state.members.keys()]) removeMember(id);
@@ -576,6 +581,7 @@ function attachCall(member, call, outgoing = false) {
     else removeMember(member.id);
   });
   const pc = call.peerConnection;
+  watchPath(pc, 'voz', member);
   pc?.addEventListener('iceconnectionstatechange', () => {
     if (member.call !== call) return;
     const st = pc.iceConnectionState;
@@ -611,6 +617,111 @@ async function logVoicePath(member, pc) {
       pair?.currentRoundTripTime != null ? `${Math.round(pair.currentRoundTripTime * 1000)} ms` : '');
   });
 }
+
+// ---------- Cloudflare (TURN) só quando precisa ----------
+// Na largada, o caminho pelo TURN às vezes responde antes do direto e o ICE
+// fica com ele, mesmo dando pra ir direto (gasto à toa na conta). Os
+// candidatos relay só são anunciados RELAY_DELAY_MS depois de criar a
+// conexão: o direto tem esse tempo de vantagem; se não der, o TURN entra.
+const RELAY_DELAY_MS = 2000;
+
+class BadernaPeerConnection extends RTCPeerConnection {
+  constructor(...args) {
+    super(...args);
+    this.createdAt = performance.now();
+    this.iceHandler = null;
+  }
+
+  get onicecandidate() {
+    return this.iceHandler;
+  }
+
+  // PeerJS troca o handler por um vazio quando o ICE completa; o atrasado
+  // chama o que estiver valendo na hora.
+  set onicecandidate(fn) {
+    this.iceHandler = fn;
+    super.onicecandidate = fn && ((e) => {
+      const wait = this.createdAt + RELAY_DELAY_MS - performance.now();
+      if (e.candidate?.type === 'relay' && wait > 0) {
+        setTimeout(() => {
+          if (this.signalingState !== 'closed') this.iceHandler?.(e);
+        }, wait);
+        return;
+      }
+      fn(e);
+    });
+  }
+}
+// PeerJS procura RTCPeerConnection no global a cada conexão.
+window.RTCPeerConnection = BadernaPeerConnection;
+
+// ---------- Caminho e gasto no TURN (vai pro baderna.log) ----------
+// A cada PATH_POLL_MS soma o que passou pelo TURN em cada conexão (voz e
+// tela) e anota quando o caminho muda. Resumo a cada RELAY_SUMMARY_MS e ao
+// sair da sala, pra bater com a conta da Cloudflare. É só o meu lado: cada
+// um tem o seu log.
+const PATH_POLL_MS = 30_000;
+const RELAY_SUMMARY_MS = 10 * 60_000;
+const watchedPaths = new Set();
+const relayUsage = new Map(); // "nome · tipo" → bytes
+let relayLogged = 0;
+let relaySummaryAt = 0;
+
+function watchPath(pc, kind, member) {
+  if (!pc) return;
+  const w = { pc, kind, member, path: '', bytes: 0 };
+  watchedPaths.add(w);
+  pc.addEventListener('connectionstatechange', () => {
+    if (pc.connectionState === 'connected') pollPath(w);
+  });
+}
+
+async function pollPath(w) {
+  const stats = await w.pc.getStats().catch(() => null);
+  if (!stats) return;
+  stats.forEach((r) => {
+    if (r.type !== 'transport' || !r.selectedCandidatePairId) return;
+    const pair = stats.get(r.selectedCandidatePairId);
+    if (!pair) return;
+    const local = stats.get(pair.localCandidateId);
+    const remote = stats.get(pair.remoteCandidateId);
+    const relay = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
+    const bytes = (r.bytesSent ?? 0) + (r.bytesReceived ?? 0);
+    if (relay && bytes > w.bytes) {
+      const key = `${w.member.name} · ${w.kind}`;
+      relayUsage.set(key, (relayUsage.get(key) ?? 0) + bytes - w.bytes);
+    }
+    w.bytes = bytes;
+    const path = `${local?.candidateType}/${local?.protocol} -> ${remote?.candidateType}`;
+    if (path === w.path) return;
+    // A voz já anota o caminho ao conectar (logVoicePath); aqui só a mudança.
+    if (w.path || w.kind !== 'voz') {
+      logEvent(`${w.kind}: caminho${w.path ? ' mudou' : ''}`, w.member.name, path,
+        pair.currentRoundTripTime != null ? `${Math.round(pair.currentRoundTripTime * 1000)} ms` : '');
+    }
+    w.path = path;
+  });
+}
+
+async function pollPaths() {
+  for (const w of watchedPaths) {
+    if (w.pc.connectionState === 'closed') watchedPaths.delete(w);
+    else await pollPath(w);
+  }
+  if (performance.now() - relaySummaryAt >= RELAY_SUMMARY_MS) logRelaySummary();
+}
+
+function logRelaySummary(final = false) {
+  relaySummaryAt = performance.now();
+  const total = [...relayUsage.values()].reduce((a, b) => a + b, 0);
+  if (total === relayLogged && !final) return;
+  relayLogged = total;
+  const mb = (b) => `${(b / 1e6).toFixed(1)} MB`;
+  const parts = [...relayUsage].sort((a, b) => b[1] - a[1]).map(([k, b]) => `${k} ${mb(b)}`);
+  if (total || final) logEvent(final ? 'turn: total da sessão' : 'turn: até agora', mb(total), parts.join(', '));
+}
+
+setInterval(pollPaths, PATH_POLL_MS);
 
 // PeerJS nem sempre dispara "close" quando o outro lado some; olha o ICE.
 function watchIce(member, pc) {
@@ -1447,6 +1558,7 @@ function sendScreenTo(member) {
   if (!call) return;
   member.screenOut = call;
   const pc = call.peerConnection;
+  watchPath(pc, 'tela enviada', member);
   pc?.addEventListener('connectionstatechange', () => {
     if (pc.connectionState === 'connected') retuneScreen();
   });
@@ -1460,6 +1572,7 @@ function sendScreenTo(member) {
 function attachScreenIn(member, call) {
   member.screenIn?.close();
   member.screenIn = call;
+  watchPath(call.peerConnection, 'tela recebida', member);
   call.on('stream', (stream) => {
     registerScreen(member.id, `Tela de ${member.name}`, stream, true);
     renderSeat(member);
