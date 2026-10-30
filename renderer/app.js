@@ -222,17 +222,18 @@ async function join() {
 
     if (await tryClaimBeacon()) {
       state.seq = 0;
-      // Sala salva volta com o último tema usado nela. No Halloween é a noite
-      // dele, que também não fica grudada na sala depois.
+      // Sala salva volta com o último tema usado nela. Em evento vale o tema
+      // dele, que também não fica grudado na sala depois.
       const savedTheme = savedRoom(room)?.theme;
-      state.theme = HALLOWEEN || savedTheme === 'halloween' ? DEFAULT_THEME : savedTheme ?? DEFAULT_THEME;
+      const eventTheme = EVENTS.some((e) => e.theme === savedTheme);
+      state.theme = ACTIVE_EVENT?.theme || eventTheme ? DEFAULT_THEME : savedTheme ?? DEFAULT_THEME;
       assignCostume();
       becomeHost();
     } else {
       await joinViaBeacon();
     }
     showRoom();
-    if (HALLOWEEN) addSystem(`🎃 Hoje você é ${avatarName('costume', state.avatar.costume)}. Dá pra trocar em "Editar".`);
+    if (ACTIVE_EVENT?.welcome) addSystem(ACTIVE_EVENT.welcome.replace('{c}', avatarName('costume', state.avatar.costume)));
     setLobbyStatus('');
     ensureCodecOrder(); // mede em segundo plano; precisa do mic aberto pras stats
   } catch (err) {
@@ -2290,6 +2291,11 @@ function playBlip(up) {
   if (loadPref('sounds') === 'off' || state.deaf || !state.audioCtx) return;
   const ctx = state.audioCtx;
   const t = ctx.currentTime;
+  const eventSound = EVENT_SOUNDS[ACTIVE_EVENT?.sounds?.[up ? 'join' : 'leave']];
+  if (eventSound) {
+    eventSound(ctx, ctx.destination, t);
+    return;
+  }
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.type = 'triangle';
@@ -2701,12 +2707,12 @@ function updateDock() {
 let avatarDraft = null;
 // Aba aberta em cada campo com categorias; sem escolha, abre a da opção atual.
 let avatarTabs = {};
-// No Halloween a fantasia vem do sorteio, a não ser que a pessoa tenha escolhido
+// Em evento a fantasia vem do sorteio, a não ser que a pessoa tenha escolhido
 // outra antes de entrar. Nada disso vai pro boneco salvo no PC.
 let costumePicked = false;
 
 function assignCostume(used) {
-  if (!HALLOWEEN || costumePicked) return;
+  if (!EVENT_COSTUMES || costumePicked) return;
   state.avatar = { ...state.avatar, costume: rollCostume(used) };
 }
 
@@ -2763,7 +2769,7 @@ function avatarField(key, options) {
     field.append(tabs);
     options = [...(options.includes('nada') ? ['nada'] : []), ...cats.find(([name]) => name === open)[1]];
   }
-  if (key === 'costume' && HALLOWEEN) options = COSTUMES;
+  if (key === 'costume' && EVENT_COSTUMES) options = EVENT_COSTUMES;
   const list = document.createElement('div');
   list.className = 'options';
   for (const value of options) {
@@ -2797,7 +2803,7 @@ function avatarField(key, options) {
 
 function saveAvatar() {
   state.avatar = sanitizeAvatar(avatarDraft);
-  if (HALLOWEEN) costumePicked = true;
+  if (EVENT_COSTUMES) costumePicked = true;
   else savePref('avatar', JSON.stringify(state.avatar));
   $('avatar-dialog').close();
   renderLobbySeat();
@@ -3014,10 +3020,8 @@ function describeError(err) {
 // ---------- Boot ----------
 
 state.avatar = loadAvatar();
-if (HALLOWEEN) {
-  document.documentElement.classList.add('halloween');
-  assignCostume();
-}
+if (ACTIVE_EVENT) document.documentElement.classList.add(ACTIVE_EVENT.id);
+assignCostume();
 applyTheme(DEFAULT_THEME);
 $('name').value = loadPref('name');
 $('room').value = loadPref('lastRoom');
@@ -3098,7 +3102,7 @@ $('settings-close').addEventListener('click', () => $('settings-dialog').close()
 $('awards-close').addEventListener('click', () => $('awards-dialog').close());
 $('edit-avatar-room').addEventListener('click', openAvatarEditor);
 $('avatar-random').addEventListener('click', () => {
-  avatarDraft = HALLOWEEN ? { ...avatarDraft, costume: rollCostume([avatarDraft.costume]) } : randomAvatar();
+  avatarDraft = EVENT_COSTUMES ? { ...avatarDraft, costume: rollCostume([avatarDraft.costume]) } : randomAvatar();
   avatarTabs = {};
   renderAvatarEditor();
 });

@@ -745,7 +745,7 @@ const THEMES = {
   },
 };
 
-const DEFAULT_THEME = HALLOWEEN ? 'halloween' : 'arena';
+const DEFAULT_THEME = ACTIVE_EVENT?.theme ?? 'arena';
 
 function themeSvg(id) {
   const theme = THEMES[id] ?? THEMES[DEFAULT_THEME];

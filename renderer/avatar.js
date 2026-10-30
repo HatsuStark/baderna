@@ -6,13 +6,6 @@
 
 const INK = '#17151c';
 
-// Halloween: fantasias sorteadas ao entrar e tema próprio. O dia vem do PC de
-// cada um; a janela folgada cobre véspera e fuso.
-const HALLOWEEN = (() => {
-  const now = new Date();
-  return (now.getMonth() === 9 && now.getDate() >= 30) || (now.getMonth() === 10 && now.getDate() === 1);
-})();
-
 const AVATAR_PALETTE = [
   '#ff2bd6', '#19f0ff', '#b6ff3b', '#ffb627', '#ff3b5c', '#ff6b00',
   '#7048e8', '#364fc7', '#2f9e44', '#f8f9fa', '#495057', '#212529',
@@ -518,7 +511,7 @@ const AVATAR_OPTIONS = {
 };
 
 // Seções do editor de boneco.
-const AVATAR_GROUPS = HALLOWEEN ? [['Skin premium', ['costume']]] : [
+const AVATAR_GROUPS = EVENT_COSTUMES ? [['Skin premium', ['costume']]] : [
   ['Skin premium', ['costume']],
   ['Corpo e rosto', ['body', 'skin', 'eyes', 'brows', 'mouth', 'facial', 'marks', 'hairColor']],
   ['Cabelo e chapéu', ['top', 'topColor', 'extra']],
@@ -2048,8 +2041,9 @@ function dressed(a) {
 // Sorteia uma fantasia, evitando as que já estão na sala enquanto der.
 function rollCostume(used = []) {
   const taken = Array.isArray(used) ? used : [];
-  const free = COSTUMES.filter((id) => !taken.includes(id));
-  const list = free.length ? free : COSTUMES;
+  const pool = EVENT_COSTUMES ?? COSTUMES;
+  const free = pool.filter((id) => !taken.includes(id));
+  const list = free.length ? free : pool;
   return list[Math.floor(Math.random() * list.length)];
 }
 
