@@ -486,7 +486,9 @@ const AVATAR_NAMES = {
     'nada': 'Sem fantasia', 'jason': 'Jeison do Lago', 'myers': 'Maicon Maias', 'freddy': 'Fredão das Garras',
     'leatherface': 'Zé Motosserra', 'ghostface': 'Gritão', 'chucky': 'Boneco do Paraguai', 'art': 'Arnaldo, o Palhaço',
     'pinhead': 'Cabeça de Alfinete', 'pennywise': 'Peniuaise da Sarjeta', 'dracula': 'Drácula da Penha',
-    'frankenstein': 'Frankenstênio', 'sadako': 'Sadaquinha do Poço',
+    'frankenstein': 'Frankenstênio', 'sadako': 'Sadaquinha do Poço', 'alien': 'ET de Varginha', 'jigsaw': 'Tio Serrote',
+    'annabelle': 'Anabéu', 'valak': 'Irmã Valquíria', 'regan': 'Reginha Cospe-Sopa', 'tubarao': 'Tubarão Te Amo',
+    'hannibal': 'Aníbal do Churrasco', 'lobisomem': 'Lobão da Lua Cheia', 'mumia': 'Faraó Ãozinho', 'predador': 'Predadô do Mato',
   },
 };
 const avatarName = (key, value) => AVATAR_NAMES[key]?.[value] ?? value;
@@ -511,7 +513,8 @@ const AVATAR_OPTIONS = {
   pants: ['#343a40', '#1864ab', '#2b2b2b', '#5c3d2e', '#7048e8', '#2f9e44'],
   chair: allIn('chair'),
   item: ['nada', ...allIn('item')],
-  costume: ['nada', 'jason', 'myers', 'freddy', 'leatherface', 'ghostface', 'chucky', 'art', 'pinhead', 'pennywise', 'dracula', 'frankenstein', 'sadako'],
+  costume: ['nada', 'jason', 'myers', 'freddy', 'leatherface', 'ghostface', 'chucky', 'art', 'pinhead', 'pennywise', 'dracula', 'frankenstein', 'sadako',
+    'alien', 'jigsaw', 'annabelle', 'valak', 'regan', 'tubarao', 'hannibal', 'lobisomem', 'mumia', 'predador'],
 };
 
 // Seções do editor de boneco.
@@ -1664,6 +1667,363 @@ const PREMIUM_SKINS = {
         <path d="M4 158 H156 M4 182 H156 M36 145 V158 M84 145 V158 M128 145 V158 M18 158 V182 M60 158 V182 M108 158 V182 M144 158 V182 M38 182 V206 M84 182 V206 M126 182 V206"
           stroke="#343a40" stroke-width="2.5"/>
         <path d="M14 196 Q22 188 34 194 M110 150 Q120 146 134 154" fill="none" stroke="#2f6b3a" stroke-width="4"/>`,
+    },
+  },
+
+  alien: {
+    look: { body: 'magrelo', skin: '#1d2026', topColor: '#2b3038', pants: '#1d2026' },
+    head: () => `<path d="M44 74 Q42 38 76 28 Q118 16 150 -6 Q146 36 120 64 Q116 98 80 104 Q48 100 44 74 Z" fill="#1d2026" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M58 44 Q98 22 142 2 Q134 30 112 52 Q88 42 58 44 Z" fill="#3a424d" opacity=".75"/>
+      <path d="M72 38 Q78 44 76 52 M88 32 Q94 38 92 48 M104 25 Q110 32 108 44 M120 17 Q126 24 122 36" fill="none" stroke="#14161b" stroke-width="2.5"/>
+      <path d="M66 42 Q84 34 100 30" fill="none" stroke="#7d8896" stroke-width="2.5" stroke-linecap="round"/>
+      ${skinMouths(`<path d="M54 76 Q80 68 106 76 Q102 92 80 94 Q58 92 54 76 Z" fill="#0b0c0f" stroke="${INK}" stroke-width="2"/>
+        <path d="M58 77 l3 7 3 -7 3 7 3 -7 3 7 3 -7 3 7 3 -7 3 7 3 -7 3 7 3 -7 3 7 3 -7 3 6" fill="#dee2e6" stroke="${INK}" stroke-width=".8"/>
+        <path d="M62 91 l3 -6 3 6 3 -6 3 6 3 -6 3 6 3 -6 3 6 3 -6 3 6 3 -6 3 6" fill="#dee2e6" stroke="${INK}" stroke-width=".8"/>`,
+        `<path d="M50 74 Q80 66 110 74 Q106 112 80 114 Q54 112 50 74 Z" fill="#0b0c0f" stroke="${INK}" stroke-width="2.5"/>
+        <path d="M54 75 l3 8 3 -8 3 8 3 -8 3 8 3 -8 3 8 3 -8 3 8 3 -8 3 8 3 -8 3 8 3 -8 3 8 3 -8 3 7" fill="#dee2e6" stroke="${INK}" stroke-width=".8"/>
+        <path d="M68 86 H92 Q92 104 80 106 Q68 104 68 86 Z" fill="#868e96" stroke="${INK}" stroke-width="2"/>
+        <path d="M70 87 l2.5 6 2.5 -6 2.5 6 2.5 -6 2.5 6 2.5 -6 2.5 6 2.5 -6" fill="#f8f9fa" stroke="${INK}" stroke-width=".7"/>`)}`,
+    kit: {
+      main: '#1d2026',
+      draw: (a, t) => area('#1d2026') + hBars(t + 8, 150, 9, 3.5, '#3a424d') + `<path d="M80 ${t} V150" stroke="#0b0c0f" stroke-width="5"/>`,
+    },
+    over: (a, t) => `<path d="M58 ${t + 4} Q40 ${t - 26} 30 ${t - 22} L36 ${t - 12} Q46 ${t - 12} 56 ${t + 14} Z M102 ${t + 4} Q120 ${t - 26} 130 ${t - 22} L124 ${t - 12} Q114 ${t - 12} 104 ${t + 14} Z" fill="#2b3038" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>`,
+    prop: (a) => {
+      const [hx, hy] = bodyOf(a).hands[1];
+      return `<path d="M100 150 Q150 156 150 112 Q150 78 128 62" fill="none" stroke="${INK}" stroke-width="10" stroke-linecap="round"/>
+        <path d="M100 150 Q150 156 150 112 Q150 78 128 62" fill="none" stroke="#3a424d" stroke-width="5" stroke-dasharray="7 3"/>
+        <path d="M134 68 L118 44 L122 66 Z" fill="#adb5bd" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>${skinHand(a)}`;
+    },
+    chair: {
+      back: `<rect x="8" y="26" width="144" height="128" rx="10" fill="#22343a" stroke="${INK}" stroke-width="3"/>
+        <path d="M24 26 Q18 90 28 154 M56 26 Q50 90 60 154 M104 26 Q110 90 100 154 M136 26 Q142 90 132 154" fill="none" stroke="#3b5a60" stroke-width="7"/>
+        <path d="M8 62 Q80 48 152 62 M8 106 Q80 94 152 106" fill="none" stroke="#14262b" stroke-width="4"/>`,
+      front: `<ellipse cx="80" cy="182" rx="50" ry="26" fill="#6f6a4e" stroke="${INK}" stroke-width="3"/>
+        <path d="M30 180 Q50 150 80 152 Q110 150 130 180 L110 168 L96 178 L80 164 L64 178 L50 168 Z" fill="#8b8562" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M44 192 Q60 176 58 196 M116 192 Q100 176 102 196 M80 180 V204" fill="none" stroke="#4a4632" stroke-width="3"/>`,
+    },
+  },
+
+  jigsaw: {
+    look: { body: 'padrão', skin: '#f4f1e8', topColor: '#f4f1e8', pants: '#111' },
+    head: () => `${skinHead('#f4f1e8')}
+      <path d="M37 62 Q34 24 80 24 Q126 24 123 62 Q112 42 80 42 Q48 42 37 62 Z" fill="#111" stroke="${INK}" stroke-width="2.5"/>
+      <ellipse cx="65" cy="60" rx="10" ry="11" fill="#0b0a0c"/><ellipse cx="95" cy="60" rx="10" ry="11" fill="#0b0a0c"/>
+      <circle cx="65" cy="60" r="3.5" fill="#d1001f"/><circle cx="95" cy="60" r="3.5" fill="#d1001f"/>
+      ${[52, 108].map((x) => `<path d="M${x} 82 m0 -1 a2.5 2.5 0 1 1 -2.5 2.5 a5 5 0 1 0 5 -5 a7.5 7.5 0 1 1 -7.5 7.5" fill="none" stroke="#d1001f" stroke-width="2.2" stroke-linecap="round"/>`).join('')}
+      ${skinMouths(`<path d="M68 90 H92" stroke="#d1001f" stroke-width="5" stroke-linecap="round"/>
+        <path d="M66 84 V102 M94 84 V102" stroke="${INK}" stroke-width="2"/>`,
+        `<rect x="66" y="84" width="28" height="11" fill="#0b0a0c"/>
+        <path d="M68 84 H92" stroke="#d1001f" stroke-width="4" stroke-linecap="round"/>
+        <path d="M66 84 V110 M94 84 V110" stroke="${INK}" stroke-width="2"/>
+        <path d="M66 95 H94 V110 Q80 114 66 110 Z" fill="#f4f1e8" stroke="${INK}" stroke-width="2"/>
+        <path d="M70 96 H90" stroke="#d1001f" stroke-width="4" stroke-linecap="round"/>`)}`,
+    kit: {
+      main: '#111',
+      draw: (a, t) => area('#111') + `<path d="M62 ${t - 2} L80 ${t + 46} L98 ${t - 2} Z" fill="#f8f9fa"/>
+        <path d="M80 ${t + 8} l-11 -6 v12 Z M80 ${t + 8} l11 -6 v12 Z" fill="#d1001f" stroke="${INK}" stroke-width="1"/>
+        <path d="M62 ${t - 2} L72 ${t + 24} M98 ${t - 2} L88 ${t + 24}" stroke="#343a40" stroke-width="3"/>`,
+    },
+    prop: (a) => {
+      const [hx, hy] = bodyOf(a).hands[1];
+      return `<g transform="translate(${hx} ${hy}) rotate(14)">
+        <path d="M-6 -8 H8 L3 -74 H-6 Z" fill="#ced4da" stroke="${INK}" stroke-width="2"/>
+        <path d="M8 -10 l4 -3 -3 -4 4 -3 -3 -4 4 -3 -3 -4 4 -3 -3 -4 3 -3 -3 -4 3 -3 -3 -4 3 -3 -3 -4 2 -3" fill="none" stroke="${INK}" stroke-width="1.5"/>
+        <rect x="-9" y="-8" width="20" height="20" rx="4" fill="#7a4a1f" stroke="${INK}" stroke-width="2"/>
+        <circle cx="1" cy="2" r="4" fill="#0b0a0c"/></g>${skinHand(a)}`;
+    },
+    chair: {
+      back: `<path d="M124 154 L132 60 M116 62 H146" stroke="#c92a2a" stroke-width="8" stroke-linecap="round"/>
+        <path d="M116 62 H146" stroke="${INK}" stroke-width="2" opacity=".4"/>
+        <rect x="44" y="118" width="72" height="36" rx="10" fill="#343a40" stroke="${INK}" stroke-width="3"/>`,
+      front: `<rect x="36" y="148" width="88" height="14" rx="6" fill="#c92a2a" stroke="${INK}" stroke-width="3"/>
+        <path d="M46 162 L34 186 M114 162 L132 186" stroke="#c92a2a" stroke-width="8" stroke-linecap="round"/>
+        <circle cx="30" cy="190" r="15" fill="#212529" stroke="${INK}" stroke-width="3"/><circle cx="30" cy="190" r="5" fill="#ced4da"/>
+        <circle cx="134" cy="190" r="15" fill="#212529" stroke="${INK}" stroke-width="3"/><circle cx="134" cy="190" r="5" fill="#ced4da"/>
+        <circle cx="80" cy="182" r="22" fill="#212529" stroke="${INK}" stroke-width="3"/><circle cx="80" cy="182" r="14" fill="none" stroke="#adb5bd" stroke-width="2"/>
+        <path d="M80 168 V196 M66 182 H94 M70 172 L90 192 M90 172 L70 192" stroke="#adb5bd" stroke-width="1.5"/>
+        <circle cx="80" cy="182" r="5" fill="#c92a2a" stroke="${INK}" stroke-width="1.5"/>`,
+    },
+  },
+
+  annabelle: {
+    look: { body: 'baixinho', skin: '#f3e6d6', topColor: '#f3e6d6', pants: '#f1f3f5' },
+    head: () => `<path d="M36 66 Q24 92 34 130 L46 130 Q40 98 50 70 Z M124 66 Q136 92 126 130 L114 130 Q120 98 110 70 Z" fill="#8a3b18" stroke="${INK}" stroke-width="2.5"/>
+      <path d="M34 92 l14 3 M33 104 l13 3 M34 116 l12 3 M126 92 l-14 3 M127 104 l-13 3 M126 116 l-12 3" stroke="#5c2610" stroke-width="2"/>
+      <path d="M30 128 l10 7 10 -7 -10 -6 Z M110 128 l10 7 10 -7 -10 -6 Z" fill="#d1001f" stroke="${INK}" stroke-width="1.5"/>
+      ${skinHead('#f3e6d6')}
+      <path d="M38 58 Q40 24 80 24 Q120 24 122 58 Q108 40 84 42 L80 36 L76 42 Q52 40 38 58 Z" fill="#8a3b18" stroke="${INK}" stroke-width="2.5"/>
+      <circle cx="65" cy="62" r="11" fill="#fff" stroke="${INK}" stroke-width="2.5"/><circle cx="95" cy="62" r="11" fill="#fff" stroke="${INK}" stroke-width="2.5"/>
+      <circle cx="65" cy="63" r="6" fill="#4a2c17"/><circle cx="95" cy="63" r="6" fill="#4a2c17"/><circle cx="65" cy="63" r="2.6" fill="#0b0a0c"/><circle cx="95" cy="63" r="2.6" fill="#0b0a0c"/>
+      <path d="M53 58 Q65 44 77 58 M83 58 Q95 44 107 58" fill="none" stroke="#0b0a0c" stroke-width="2.5"/>
+      <path d="M49 80 l10 -3 -3 9 Z M111 80 l-10 -3 3 9 Z" fill="#d1001f" opacity=".85"/>
+      <path d="M104 34 L98 48 L104 54 L100 64 M58 88 L64 94 L60 100" fill="none" stroke="#5c5146" stroke-width="1.6"/>
+      ${skinMouths(`<path d="M64 84 Q80 96 96 84 Q80 90 64 84 Z" fill="#7d0b0b" stroke="${INK}" stroke-width="1.8"/>
+        <path d="M70 87 l2 3 2 -2 2 3 2 -2 2 3 2 -2 2 3 2 -2 2 2" fill="none" stroke="#fff" stroke-width="1.3"/>`,
+        `<path d="M62 80 Q80 110 98 80 Q80 88 62 80 Z" fill="#3b0d14" stroke="${INK}" stroke-width="2.5"/>
+        <path d="M66 83 l3 5 3 -4 3 5 3 -4 3 5 3 -4 3 5 3 -4 3 4" fill="none" stroke="#fff" stroke-width="1.8"/>`)}`,
+    kit: {
+      main: '#f1f3f5',
+      draw: (a, t) => area('#f1f3f5') + `<path d="M58 ${t} Q80 ${t + 16} 102 ${t}" fill="#f8d7da" stroke="#d1001f" stroke-width="2.5"/>
+        <path d="M80 ${t + 13} l-10 -5 v10 Z M80 ${t + 13} l10 -5 v10 Z" fill="#d1001f" stroke="${INK}" stroke-width="1"/>
+        ${[t + 25, t + 32].map((y) => `<path d="M30 ${y} H130" stroke="#d1001f" stroke-width="2"/>`).join('')}`,
+    },
+    chair: {
+      back: `<path d="M18 154 V8 Q80 -14 142 8 V154 Z" fill="#2b1a12" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M28 150 V16 Q80 -2 132 16 V150 Z" fill="#3b2414"/>
+        <path d="M80 8 V50 M66 22 H94" stroke="#ffd43b" stroke-width="5" opacity=".85"/>`,
+      front: `<path d="M28 16 Q80 -2 132 16 V152 H28 Z" fill="#a8d8e8" opacity=".14"/>
+        <path d="M42 24 L60 104 M118 34 L128 70" stroke="#fff" stroke-width="4" opacity=".25"/>
+        <path d="M18 154 V8 Q80 -14 142 8 V154" fill="none" stroke="#6b4220" stroke-width="10" stroke-linejoin="round"/>
+        <path d="M80 -3 V152" stroke="#6b4220" stroke-width="4" opacity=".5"/>
+        <rect x="10" y="150" width="140" height="56" fill="#3b2414" stroke="${INK}" stroke-width="3"/>
+        <rect x="24" y="160" width="112" height="34" rx="2" fill="#f1e3c6" stroke="${INK}" stroke-width="2"/>
+        <text x="80" y="176" text-anchor="middle" font-family="Permanent Marker" font-size="14" fill="#d1001f">PERIGO</text>
+        <text x="80" y="189" text-anchor="middle" font-family="Permanent Marker" font-size="10" fill="#212529">não abra, bicho</text>`,
+    },
+  },
+
+  valak: {
+    look: { body: 'padrão', skin: '#e4e0e2', topColor: '#e4e0e2', pants: '#111' },
+    head: () => `<path d="M30 118 Q18 18 80 16 Q142 18 130 118 L110 118 L50 118 Z" fill="#111" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M38 62 Q38 26 80 26 Q122 26 122 62 Q122 102 80 108 Q38 102 38 62 Z" fill="#f4f1e8" stroke="${INK}" stroke-width="2.5"/>
+      <path d="M48 62 Q50 38 80 38 Q110 38 112 62 Q112 94 80 100 Q48 94 48 62 Z" fill="#e4e0e2" stroke="${INK}" stroke-width="1.5"/>
+      <path d="M53 60 Q62 50 76 62 Q76 76 64 76 Q54 72 53 60 Z M107 60 Q98 50 84 62 Q84 76 96 76 Q106 72 107 60 Z" fill="#0b0a0c"/>
+      <circle cx="66" cy="64" r="3.4" fill="#ffd43b"/><circle cx="94" cy="64" r="3.4" fill="#ffd43b"/>
+      <circle cx="66" cy="64" r="1.3" fill="#0b0a0c"/><circle cx="94" cy="64" r="1.3" fill="#0b0a0c"/>
+      <path d="M78 76 L80 80 L82 76" fill="none" stroke="#5c5660" stroke-width="2"/>
+      ${skinMouths(`<path d="M64 86 Q80 80 96 86 Q88 94 80 94 Q72 94 64 86 Z" fill="#0b0a0c" stroke="${INK}" stroke-width="1.5"/>
+        <path d="M67 85 l3 6 3 -7 3 8 2 -8 3 8 2 -8 3 7 3 -6 3 4" fill="#f1e3c6" stroke="${INK}" stroke-width=".7"/>`,
+        `<path d="M60 82 Q80 76 100 82 Q94 106 80 106 Q66 106 60 82 Z" fill="#0b0a0c" stroke="${INK}" stroke-width="2"/>
+        <path d="M63 82 l3 9 3 -9 3 11 3 -11 3 12 3 -12 3 11 3 -11 3 9 3 -8" fill="#f1e3c6" stroke="${INK}" stroke-width=".7"/>
+        <path d="M68 104 l3 -7 3 6 3 -8 3 8 3 -8 3 6 3 -7 3 6" fill="#f1e3c6" stroke="${INK}" stroke-width=".7"/>`)}`,
+    kit: {
+      main: '#111',
+      draw: (a, t) => area('#111') + `<path d="M58 ${t} L80 ${t + 26} L102 ${t} Z" fill="#f4f1e8"/>
+        <path d="M58 ${t} L80 ${t + 26} L102 ${t}" fill="none" stroke="${INK}" stroke-width="2"/>
+        <path d="M64 ${t + 26} V150 M96 ${t + 26} V150" stroke="#2b2a33" stroke-width="3"/>`,
+    },
+    prop: (a) => {
+      const [hx, hy] = bodyOf(a).hands[1];
+      return `<g transform="translate(${hx} ${hy - 26})">
+        <path d="M-3 -20 H3 V6 H12 V12 H3 V20 H-3 V12 H-12 V6 H-3 Z" fill="#c9a227" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/></g>${skinHand(a)}`;
+    },
+    chair: {
+      back: `<path d="M16 154 V58 Q18 18 80 -6 Q142 18 144 58 V154 Z" fill="#1b1a20" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M26 150 V60 Q28 28 80 6 Q132 28 134 60 V150 Z" fill="#3a1654"/>
+        <path d="M26 96 L80 6 L134 96 Z" fill="#a51111" opacity=".85"/>
+        <path d="M26 60 L80 96 L134 60 M26 96 H134 M80 6 V150 M26 124 H134 M50 96 V150 M110 96 V150" stroke="#0b0a0c" stroke-width="4" fill="none"/>`,
+      front: `<rect x="8" y="150" width="144" height="20" rx="3" fill="#5c3d22" stroke="${INK}" stroke-width="3"/>
+        <rect x="16" y="170" width="128" height="36" fill="#3b2414" stroke="${INK}" stroke-width="3"/>
+        <path d="M36 170 V206 M124 170 V206 M36 188 H124" stroke="#2b1a12" stroke-width="3"/>`,
+    },
+  },
+
+  regan: {
+    look: { body: 'magrelo', skin: '#d4cfb8', topColor: '#d4cfb8', pants: '#f1f3f5' },
+    head: () => `<path d="M36 88 Q14 50 40 28 Q60 8 92 14 Q130 16 134 56 Q138 80 124 96 L118 64 Q100 40 80 42 Q56 42 44 66 Z" fill="#5c3a24" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+      ${skinHead('#d4cfb8')}
+      <path d="M37 72 Q34 30 80 28 Q126 30 123 72 Q116 50 100 46 Q84 38 72 46 Q50 48 37 72 Z" fill="#5c3a24" stroke="${INK}" stroke-width="2"/>
+      <path d="M48 52 Q40 66 44 90 M116 52 Q124 70 118 92" fill="none" stroke="#3b2414" stroke-width="3"/>
+      <ellipse cx="66" cy="64" rx="10" ry="9" fill="#5c4a3a"/><ellipse cx="94" cy="64" rx="10" ry="9" fill="#5c4a3a"/>
+      <circle cx="66" cy="64" r="6" fill="#d9e021" stroke="${INK}" stroke-width="1.5"/><circle cx="94" cy="64" r="6" fill="#d9e021" stroke="${INK}" stroke-width="1.5"/>
+      <circle cx="66" cy="64" r="1.8" fill="${INK}"/><circle cx="94" cy="64" r="1.8" fill="${INK}"/>
+      <path d="M52 76 l8 8 M104 76 L112 86 M58 50 l6 5 M106 52 l-6 6 M52 84 l-3 6 M72 76 l-3 8" fill="none" stroke="#a51111" stroke-width="2.2" stroke-linecap="round"/>
+      ${skinMouths(`<path d="M66 88 Q80 82 94 88 Q80 94 66 88 Z" fill="#5c1a1a" stroke="${INK}" stroke-width="2"/>
+        <path d="M72 91 Q72 102 75 102 Q78 102 78 92 M86 91 Q87 98 89 98 Q91 98 90 90" fill="#7fae2e" stroke="${INK}" stroke-width="1.2"/>`,
+        `<path d="M62 82 Q80 76 98 82 Q92 104 80 104 Q68 104 62 82 Z" fill="#26120f" stroke="${INK}" stroke-width="2.5"/>
+        <path d="M70 86 Q80 83 90 86 L108 148 Q80 162 54 148 Z" fill="#8cc63f" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M76 96 L70 138 M86 96 L92 142" stroke="#6b9e2a" stroke-width="3" fill="none"/>`)}`,
+    kit: {
+      main: '#f1f3f5',
+      draw: (a, t) => area('#f1f3f5') + `<path d="M66 ${t} Q80 ${t + 12} 94 ${t}" fill="none" stroke="#adb5bd" stroke-width="3"/>
+        <path d="M60 ${t + 14} Q56 ${t + 34} 66 ${t + 44} Q78 ${t + 52} 72 ${t + 22} Z" fill="#8cc63f"/>
+        ${[[96, t + 26, 5], [92, t + 42, 3], [68, t + 54, 3]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#a51111"/>`).join('')}`,
+    },
+    chair: {
+      back: `<path d="M6 154 V54 Q6 30 24 30 Q34 30 34 44 Q80 22 126 44 Q126 30 136 30 Q154 30 154 54 V154 Z" fill="#6b4220" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M80 34 V76 M66 46 H94" stroke="#2b1a12" stroke-width="6"/>
+        <rect x="20" y="96" width="120" height="50" rx="14" fill="#f8f9fa" stroke="${INK}" stroke-width="3"/>`,
+      front: `<path d="M4 148 Q40 136 80 148 Q120 136 156 148 V188 H4 Z" fill="#dee2e6" stroke="${INK}" stroke-width="3"/>
+        <path d="M18 156 Q30 170 26 186 M138 156 Q128 172 134 186" fill="none" stroke="#adb5bd" stroke-width="3"/>
+        <circle cx="46" cy="168" r="5" fill="#8cc63f" stroke="${INK}" stroke-width="1"/><circle cx="110" cy="176" r="3.5" fill="#8cc63f" stroke="${INK}" stroke-width="1"/>
+        <rect x="2" y="186" width="156" height="12" fill="#5c3d22" stroke="${INK}" stroke-width="3"/>
+        <path d="M14 198 V206 M146 198 V206" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>`,
+    },
+  },
+
+  tubarao: {
+    look: { body: 'fortão', skin: '#7f8f9c', topColor: '#7f8f9c', pants: '#6b7a87' },
+    head: () => `<path d="M80 34 Q86 -6 112 -6 Q104 14 106 38 Z" fill="#6b7a87" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M26 72 Q24 26 80 24 Q136 26 134 72 Q130 108 80 110 Q30 108 26 72 Z" fill="#7f8f9c" stroke="${INK}" stroke-width="3"/>
+      <path d="M36 80 Q80 66 124 80 Q118 106 80 108 Q42 106 36 80 Z" fill="#f1f3f5"/>
+      <circle cx="42" cy="58" r="7" fill="#0b0a0c"/><circle cx="118" cy="58" r="7" fill="#0b0a0c"/>
+      <circle cx="40" cy="56" r="2" fill="#fff"/><circle cx="116" cy="56" r="2" fill="#fff"/>
+      <path d="M36 50 L52 54 M124 50 L108 54" stroke="#3e4a55" stroke-width="4" stroke-linecap="round"/>
+      <path d="M74 56 q2 3 0 5 M86 56 q-2 3 0 5" fill="none" stroke="#3e4a55" stroke-width="2.5"/>
+      ${skinMouths(`<path d="M42 78 Q80 66 118 78 Q102 96 80 96 Q58 96 42 78 Z" fill="#7d0b0b" stroke="${INK}" stroke-width="2.5"/>
+        <path d="M46 78 l5 9 4 -11 5 11 4 -12 5 12 4 -12 5 12 4 -12 5 12 4 -12 5 11 4 -11 5 9 3 -5" fill="#fff" stroke="${INK}" stroke-width="1"/>`,
+        `<path d="M36 72 Q80 58 124 72 Q118 112 80 114 Q42 112 36 72 Z" fill="#5c0810" stroke="${INK}" stroke-width="3"/>
+        <path d="M40 72 l5 11 4 -13 5 13 4 -14 5 14 4 -15 5 15 4 -15 5 15 4 -14 5 14 4 -13 5 13 4 -11 3 -2" fill="#fff" stroke="${INK}" stroke-width="1"/>
+        <path d="M50 102 l4 -9 5 11 4 -12 5 13 4 -13 5 13 4 -13 5 13 4 -12 5 11 4 -9" fill="#fff" stroke="${INK}" stroke-width="1"/>`)}`,
+    kit: {
+      main: '#7f8f9c',
+      draw: (a, t) => area('#7f8f9c') + `<path d="M50 ${t} Q80 ${t + 6} 110 ${t} L100 180 H60 Z" fill="#f1f3f5"/>
+        <path d="M34 ${t + 18} l6 16 M42 ${t + 16} l6 16 M126 ${t + 18} l-6 16 M118 ${t + 16} l-6 16" stroke="#3e4a55" stroke-width="3" stroke-linecap="round"/>`,
+    },
+    over: () => `<path d="M16 116 Q-6 134 -10 150 Q10 146 28 132 Z M144 116 Q166 134 170 150 Q150 146 132 132 Z" fill="#6b7a87" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>`,
+    prop: (a) => {
+      const [hx, hy] = bodyOf(a).hands[1];
+      return `<path d="M${hx - 4} ${hy - 8} Q${hx + 10} ${hy - 40} ${hx - 6} ${hy - 58}" fill="none" stroke="#6b4220" stroke-width="2.5"/>
+        <g transform="translate(${hx - 8} ${hy - 72}) rotate(-12)">
+        <rect x="-11" y="-15" width="22" height="30" rx="8" fill="#ffd43b" stroke="${INK}" stroke-width="2.5"/>
+        <path d="M-11 -6 H11 M-11 6 H11" stroke="#c9a227" stroke-width="3"/></g>${skinHand(a)}`;
+    },
+    chair: {
+      back: `<path d="M124 150 V30 M124 34 L92 62 H124" fill="#f8f9fa" stroke="#6b4220" stroke-width="4" stroke-linejoin="round"/>`,
+      front: `<path d="M0 156 Q10 148 20 156 T40 156 T60 156 T80 156 T100 156 T120 156 T140 156 T160 156 V206 H0 Z" fill="#0d7fd1" stroke="${INK}" stroke-width="3"/>
+        <path d="M0 172 Q10 164 20 172 T40 172 T60 172 T80 172 T100 172 T120 172 T140 172 T160 172" fill="none" stroke="#7cc7ef" stroke-width="3"/>
+        <path d="M0 188 Q10 180 20 188 T40 188 T60 188 T80 188 T100 188 T120 188 T140 188 T160 188" fill="none" stroke="#7cc7ef" stroke-width="3"/>
+        <path d="M58 176 H102 L96 196 Q80 200 64 196 Z" fill="#a51111" opacity=".55"/>`,
+    },
+  },
+
+  hannibal: {
+    look: { body: 'padrão', skin: '#e0c4a8', topColor: '#d9cdb4', pants: '#d9cdb4' },
+    head: () => `${skinHead('#e0c4a8')}
+      <path d="M38 58 Q36 24 80 24 Q124 24 122 58 Q116 40 92 40 Q70 36 50 42 Q42 48 38 58 Z" fill="#6c6358" stroke="${INK}" stroke-width="2.5"/>
+      <circle cx="66" cy="58" r="8" fill="#fff" stroke="${INK}" stroke-width="2"/><circle cx="94" cy="58" r="8" fill="#fff" stroke="${INK}" stroke-width="2"/>
+      <circle cx="66" cy="58" r="3.6" fill="#7a2a1a"/><circle cx="94" cy="58" r="3.6" fill="#7a2a1a"/>
+      <circle cx="66" cy="58" r="1.5" fill="${INK}"/><circle cx="94" cy="58" r="1.5" fill="${INK}"/>
+      <path d="M56 48 Q66 44 76 50 M104 48 Q94 44 84 50" fill="none" stroke="#6c6358" stroke-width="3" stroke-linecap="round"/>
+      ${skinMouths(`<path d="M72 88 H88" stroke="#5c2a2a" stroke-width="3" stroke-linecap="round"/>`,
+        `<path d="M70 84 Q80 80 90 84 Q88 98 80 98 Q72 98 70 84 Z" fill="#3b0d14"/>
+        <path d="M72 85 H88" stroke="#fff" stroke-width="2.5"/>`)}
+      <path d="M38 70 L58 76 M122 70 L102 76 M42 88 L60 90 M118 88 L100 90" stroke="#5c3d22" stroke-width="4"/>
+      <path d="M58 68 Q80 62 102 68 L100 100 Q80 110 60 100 Z" fill="#c9b48a" fill-opacity=".18" stroke="#d9cdb4" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M60 80 H100 M60 90 H100 M68 66 V106 M80 64 V108 M92 66 V106" stroke="#d9cdb4" stroke-width="2.5"/>
+      <path d="M58 68 Q80 62 102 68 L100 100 Q80 110 60 100 Z" fill="none" stroke="${INK}" stroke-width="1.5"/>`,
+    kit: {
+      main: '#d9cdb4',
+      draw: (a, t) => area('#d9cdb4') + `<path d="M0 ${t + 24} H160 M0 ${t + 40} H160" stroke="#5c3d22" stroke-width="6"/>
+        <path d="M80 ${t + 2} V150" stroke="#a89a7c" stroke-width="2"/>
+        ${[t + 24, t + 40].map((y) => `<rect x="72" y="${y - 5}" width="16" height="10" fill="none" stroke="#adb5bd" stroke-width="2.5"/>`).join('')}`,
+    },
+    chair: {
+      back: `<path d="M26 154 V6 M134 154 V6" stroke="#6c757d" stroke-width="8" stroke-linecap="round"/>
+        <path d="M26 30 H134 M26 90 H134" stroke="#868e96" stroke-width="5"/>
+        <path d="M26 6 Q26 -6 42 -6 M134 6 Q134 -6 118 -6" fill="none" stroke="#6c757d" stroke-width="8" stroke-linecap="round"/>`,
+      front: `<path d="M26 130 H134 M38 118 L38 150 M122 118 L122 150" stroke="#5c3d22" stroke-width="6"/>
+        <rect x="22" y="150" width="116" height="10" fill="#6c757d" stroke="${INK}" stroke-width="2.5"/>
+        <path d="M30 160 L40 184 M130 160 L120 184" stroke="#6c757d" stroke-width="7"/>
+        <circle cx="38" cy="188" r="16" fill="#212529" stroke="${INK}" stroke-width="3"/><circle cx="38" cy="188" r="5" fill="#ced4da"/>
+        <circle cx="122" cy="188" r="16" fill="#212529" stroke="${INK}" stroke-width="3"/><circle cx="122" cy="188" r="5" fill="#ced4da"/>`,
+    },
+  },
+
+  lobisomem: {
+    look: { body: 'fortão', skin: '#6b4a2e', topColor: '#6b4a2e', pants: '#3b4a5c' },
+    head: () => `<path d="M42 44 L30 0 L66 28 Z M118 44 L130 0 L94 28 Z" fill="#6b4a2e" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M42 36 L36 14 L56 30 Z M118 36 L124 14 L104 30 Z" fill="#c98f7a"/>
+      <path d="M36 62 L24 74 L40 80 L32 96 L52 96 L54 108 L80 104 L106 108 L108 96 L128 96 L120 80 L136 74 L124 62 Q126 28 80 26 Q34 28 36 62 Z" fill="#6b4a2e" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M50 42 L60 34 L58 44 L70 32 L68 44 L82 30 L80 44 L94 32 L92 44 L104 36 L102 46 Z" fill="#4e3520"/>
+      <path d="M56 70 Q80 58 104 70 L100 104 Q80 112 60 104 Z" fill="#b08a60" stroke="${INK}" stroke-width="2"/>
+      <path d="M52 56 L76 62 Q70 72 58 68 Z M108 56 L84 62 Q90 72 102 68 Z" fill="#ffd43b" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>
+      <circle cx="66" cy="63" r="2.4" fill="${INK}"/><circle cx="94" cy="63" r="2.4" fill="${INK}"/>
+      <path d="M70 72 Q80 68 90 72 Q88 80 80 82 Q72 80 70 72 Z" fill="#17151c"/>
+      ${skinMouths(`<path d="M62 90 Q80 98 98 90" fill="none" stroke="${INK}" stroke-width="3" stroke-linecap="round"/>
+        <path d="M66 91 L69 99 L72 93 Z M88 93 L91 99 L94 91 Z" fill="#fff" stroke="${INK}" stroke-width="1.2"/>`,
+        `<path d="M60 86 Q80 94 100 86 Q96 116 80 116 Q64 116 60 86 Z" fill="#5c0810" stroke="${INK}" stroke-width="2.5"/>
+        <path d="M63 88 L67 101 L71 91 Z M89 91 L93 101 L97 88 Z M71 113 L74 104 L77 114 Z M83 114 L86 104 L89 113 Z" fill="#fff" stroke="${INK}" stroke-width="1.2"/>
+        <path d="M72 106 Q80 96 88 106 Q80 112 72 106 Z" fill="#e03131"/>`)}`,
+    kit: {
+      main: '#c92a2a',
+      draw: (a, t) => area('#6b4a2e') + `<path d="M30 ${t} L56 ${t} L46 ${t + 60} L20 ${t + 60} Z M130 ${t} L104 ${t} L114 ${t + 60} L140 ${t + 60} Z" fill="#a51111"/>
+        <path d="M34 ${t + 16} L54 ${t + 16} M28 ${t + 34} L50 ${t + 34} M126 ${t + 16} L106 ${t + 16} M132 ${t + 34} L110 ${t + 34} M42 ${t} L32 ${t + 60} M118 ${t} L128 ${t + 60}" stroke="#111" stroke-width="2.5"/>
+        <path d="M64 ${t + 14} l6 12 M80 ${t + 8} l-4 14 M92 ${t + 20} l6 12 M72 ${t + 34} l6 10" stroke="#4e3520" stroke-width="3"/>`,
+    },
+    prop: (a) => {
+      const [hx, hy, hr] = bodyOf(a).hands[1];
+      return `${skinHand(a)}<path d="M${hx - hr + 2} ${hy - hr + 2} l-3 -9 6 6 M${hx} ${hy - hr} v-10 l4 8 M${hx + hr - 2} ${hy - hr + 2} l3 -9 -6 6" fill="#f1e3c6" stroke="${INK}" stroke-width="1.5" stroke-linejoin="round"/>`;
+    },
+    chair: {
+      back: `<circle cx="80" cy="50" r="62" fill="#ffe8a8" stroke="${INK}" stroke-width="3"/>
+        <circle cx="50" cy="28" r="9" fill="#e0c47a" opacity=".6"/><circle cx="118" cy="62" r="13" fill="#e0c47a" opacity=".6"/><circle cx="104" cy="16" r="6" fill="#e0c47a" opacity=".6"/>`,
+      front: `<path d="M8 206 L20 160 L54 150 L98 148 L136 158 L152 206 Z" fill="#495057" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M34 166 L46 186 M78 156 L74 180 M118 166 L104 188" stroke="#343a40" stroke-width="3"/>
+        <path d="M2 206 q6 -18 12 0 q6 -14 12 0 M134 206 q6 -18 12 0 q6 -14 12 0" fill="none" stroke="#2f6b3a" stroke-width="3"/>`,
+    },
+  },
+
+  mumia: {
+    look: { body: 'magrelo', skin: '#d6c9a8', topColor: '#d6c9a8', pants: '#c7b995' },
+    head: () => `${skinHead('#d6c9a8')}
+      <path d="M38 50 Q60 36 122 46 M37 62 Q70 50 123 58 M38 76 Q80 66 122 72 M42 88 Q80 78 118 84 M52 98 Q80 92 108 96 M50 36 Q80 26 110 36" fill="none" stroke="#a89a78" stroke-width="3"/>
+      <path d="M44 42 L78 54 M120 40 L90 62 M40 82 L76 70 M118 92 L88 76" stroke="#eee3c6" stroke-width="5" stroke-linecap="round"/>
+      <path d="M54 58 Q66 50 78 58 Q74 70 62 70 Q54 66 54 58 Z" fill="#0b0a0c"/>
+      <circle cx="66" cy="61" r="3.4" fill="#40c057"/>
+      <path d="M86 62 Q96 56 106 62 Q100 66 90 66 Z" fill="#0b0a0c"/>
+      <path d="M104 96 Q118 104 114 124" fill="none" stroke="#d6c9a8" stroke-width="7" stroke-linecap="round"/>
+      <path d="M104 96 Q118 104 114 124" fill="none" stroke="${INK}" stroke-width="1.2"/>
+      ${skinMouths(`<path d="M70 86 Q80 82 90 86" fill="none" stroke="#0b0a0c" stroke-width="3" stroke-linecap="round"/>`,
+        `<path d="M66 82 Q80 76 94 82 Q90 100 80 100 Q70 100 66 82 Z" fill="#0b0a0c" stroke="${INK}" stroke-width="2"/>
+        <path d="M71 83 V88 M78 81 V87 M86 82 V87" stroke="#c7b995" stroke-width="2.5"/>`)}`,
+    kit: {
+      main: '#d6c9a8',
+      draw: (a, t) => area('#d6c9a8') + range(0, 7, 1).map((i) => {
+        const y = t + i * 9;
+        return `<path d="M30 ${y + (i % 2) * 6} L130 ${y + ((i + 1) % 2) * 6}" stroke="#a89a78" stroke-width="2.5"/>`;
+      }).join('') + `<path d="M58 ${t + 10} L84 ${t + 22} M104 ${t + 30} L76 ${t + 42}" stroke="#eee3c6" stroke-width="5"/>`,
+    },
+    prop: (a) => {
+      const [hx, hy] = bodyOf(a).hands[1];
+      return `<g transform="translate(${hx} ${hy - 26})">
+        <path d="M-3 -2 Q-13 -12 -6 -20 Q0 -25 6 -20 Q13 -12 3 -2 H14 V4 H3 V24 H-3 V4 H-14 V-2 Z M0 -6 Q6 -13 2 -17 Q0 -19 -2 -17 Q-6 -13 0 -6 Z" fill="#ffd43b" fill-rule="evenodd" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/></g>${skinHand(a)}`;
+    },
+    chair: {
+      back: `<path d="M36 154 L18 60 Q18 -6 80 -6 Q142 -6 142 60 L124 154 Z" fill="#c9a227" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M46 150 L30 60 Q30 8 80 6 Q130 8 130 60 L114 150 Z" fill="#14325c" stroke="#8a6f12" stroke-width="3"/>
+        ${[32, 52, 72, 92].map((y) => `<path d="M34 ${y} H126" stroke="#c9a227" stroke-width="3" opacity=".6"/>`).join('')}`,
+      front: `<rect x="8" y="150" width="144" height="56" fill="#c7a36a" stroke="${INK}" stroke-width="3"/>
+        <path d="M8 170 H152 M8 188 H152 M46 150 V170 M108 150 V170 M28 170 V188 M84 170 V188 M132 170 V188 M60 188 V206 M112 188 V206" stroke="#8a6f42" stroke-width="2.5"/>
+        <path d="M60 158 h12 M84 154 q6 5 0 10 M122 154 l6 8 h-12 Z" fill="none" stroke="#3b2414" stroke-width="2.5"/>
+        <circle cx="70" cy="178" r="4" fill="none" stroke="#3b2414" stroke-width="2.5"/><path d="M100 174 q6 8 0 10" fill="none" stroke="#3b2414" stroke-width="2.5"/>`,
+    },
+  },
+
+  predador: {
+    look: { body: 'fortão', skin: '#7a7a4e', topColor: '#7a7a4e', pants: '#2b2b24' },
+    head: () => `<path d="M36 60 Q22 104 28 136 M44 54 Q32 104 40 144 M116 54 Q128 104 120 144 M124 60 Q138 104 132 136" fill="none" stroke="${INK}" stroke-width="10" stroke-linecap="round"/>
+      <path d="M36 60 Q22 104 28 136 M44 54 Q32 104 40 144 M116 54 Q128 104 120 144 M124 60 Q138 104 132 136" fill="none" stroke="#2b2b24" stroke-width="6" stroke-dasharray="7 2"/>
+      <path d="M44 76 Q40 28 80 26 Q120 28 116 76 Q112 106 80 110 Q48 106 44 76 Z" fill="#adb5bd" stroke="${INK}" stroke-width="3"/>
+      <path d="M80 26 V52 M56 40 L68 54 M104 40 L92 54" stroke="#6c757d" stroke-width="3"/>
+      <path d="M50 58 L72 66 L70 74 Q58 76 50 68 Z M110 58 L88 66 L90 74 Q102 76 110 68 Z" fill="#0b0a0c" stroke="${INK}" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M72 66 L80 76 L88 66 L88 92 Q80 98 72 92 Z" fill="#ced4da" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M72 96 L88 96 M74 102 L86 102" stroke="#6c757d" stroke-width="2.5"/>
+      ${skinMouths('',
+        `<path d="M48 84 Q42 104 54 116 L60 96 Z M112 84 Q118 104 106 116 L100 96 Z" fill="#c2b280" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M54 116 L52 124 L58 118 Z M106 116 L108 124 L102 118 Z" fill="#fff" stroke="${INK}" stroke-width="1.2"/>`)}`,
+    kit: {
+      main: '#7a7a4e',
+      draw: (a, t) => area('#7a7a4e') + vBars(0, 156, 12, 1.2, '#2b2b24') + hBars(t, 176, 12, 1.2, '#2b2b24')
+        + `<path d="M46 ${t + 4} L80 ${t + 16} L114 ${t + 4} L110 ${t + 28} L80 ${t + 34} L50 ${t + 28} Z" fill="#6c757d" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>
+        ${[[72, t + 22], [88, t + 22], [80, t + 12]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.8" fill="#ff1a1a"/>`).join('')}`,
+    },
+    prop: (a) => {
+      const [hx, hy] = bodyOf(a).hands[1];
+      return `<g transform="translate(${hx} ${hy}) rotate(8)">
+        <path d="M-5 -10 L-1 -66 L2 -80 L4 -66 L5 -10 Z M6 -10 L10 -50 L13 -58 L14 -48 L12 -10 Z" fill="#dee2e6" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/>
+        <rect x="-9" y="-11" width="24" height="16" rx="3" fill="#495057" stroke="${INK}" stroke-width="2"/>
+        <rect x="-5" y="-7" width="10" height="6" fill="#ff1a1a"/></g>${skinHand(a)}`;
+    },
+    chair: {
+      back: `<path d="M12 154 V50 M148 154 V50" stroke="#3b2a1a" stroke-width="9" stroke-linecap="round"/>
+        <path d="M12 60 H148 M12 100 H148" stroke="#3b2a1a" stroke-width="7"/>
+        ${[12, 148].map((x) => `<path d="M${x - 11} 40 Q${x - 11} 22 ${x} 22 Q${x + 11} 22 ${x + 11} 40 L${x + 6} 46 V52 H${x - 6} V46 Z" fill="#e9dcc0" stroke="${INK}" stroke-width="2.5"/>
+          <circle cx="${x - 4}" cy="38" r="3" fill="${INK}"/><circle cx="${x + 4}" cy="38" r="3" fill="${INK}"/>`).join('')}`,
+      front: `<path d="M6 206 Q10 160 40 150 Q80 140 120 150 Q150 160 154 206 Z" fill="#2f4a26" stroke="${INK}" stroke-width="3"/>
+        ${[[36, 176], [80, 164], [124, 176], [58, 192], [102, 192]].map(([x, y]) => `<path d="M${x - 11} ${y - 2} Q${x - 11} ${y - 16} ${x} ${y - 16} Q${x + 11} ${y - 16} ${x + 11} ${y - 2} L${x + 6} ${y + 3} V${y + 9} H${x - 6} V${y + 3} Z" fill="#e9dcc0" stroke="${INK}" stroke-width="2"/>
+          <circle cx="${x - 4}" cy="${y - 4}" r="2.8" fill="${INK}"/><circle cx="${x + 4}" cy="${y - 4}" r="2.8" fill="${INK}"/>`).join('')}`,
     },
   },
 };
