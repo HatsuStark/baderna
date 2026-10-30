@@ -225,13 +225,17 @@ async function join() {
 
     if (await tryClaimBeacon()) {
       state.seq = 0;
-      // Sala salva volta com o último tema usado nela.
-      state.theme = savedRoom(room)?.theme ?? DEFAULT_THEME;
+      // Sala salva volta com o último tema usado nela. No Halloween é a noite
+      // dele, que também não fica grudada na sala depois.
+      const savedTheme = savedRoom(room)?.theme;
+      state.theme = HALLOWEEN || savedTheme === 'halloween' ? DEFAULT_THEME : savedTheme ?? DEFAULT_THEME;
+      assignCostume();
       becomeHost();
     } else {
       await joinViaBeacon();
     }
     showRoom();
+    if (HALLOWEEN) addSystem(`🎃 Hoje você é ${avatarName('costume', state.avatar.costume)}. Dá pra trocar em "Editar".`);
     setLobbyStatus('');
     ensureCodecOrder(); // mede em segundo plano; precisa do mic aberto pras stats
   } catch (err) {
@@ -262,6 +266,7 @@ function joinViaBeacon() {
       state.seq = msg.seq;
       state.hostId = msg.hostId;
       if (THEMES[msg.theme]) state.theme = msg.theme;
+      assignCostume(msg.costumes);
       for (const m of msg.members) connectTo(m.id, m.name, m.seq);
       resolve();
     });
@@ -274,6 +279,7 @@ async function leave() {
   broadcast({ type: 'bye' });
   await sleep(200); // deixa o "bye" sair antes de fechar tudo
   await teardown();
+  costumePicked = false; // sala nova, sorteio novo
   showLobby();
   startPreview();
   if (awards) showAwards(awards);
@@ -330,6 +336,7 @@ function becomeHost() {
         seq,
         hostId: state.myId,
         theme: state.theme,
+        costumes: [state.avatar, ...[...state.members.values()].map((m) => m.avatar)].map((a) => a?.costume).filter(Boolean),
         members: [...state.roster].map(([id, r]) => ({ id, ...r })),
       });
       state.roster.set(conn.peer, { name: cleanName(conn.metadata?.name), seq });
@@ -2710,6 +2717,14 @@ function updateThemeControls() {
 let avatarDraft = null;
 // Aba aberta em cada campo com categorias; sem escolha, abre a da opção atual.
 let avatarTabs = {};
+// No Halloween a fantasia vem do sorteio, a não ser que a pessoa tenha escolhido
+// outra antes de entrar. Nada disso vai pro boneco salvo no PC.
+let costumePicked = false;
+
+function assignCostume(used) {
+  if (!HALLOWEEN || costumePicked) return;
+  state.avatar = { ...state.avatar, costume: rollCostume(used) };
+}
 
 function openAvatarEditor() {
   avatarDraft = { ...state.avatar };
@@ -2764,6 +2779,7 @@ function avatarField(key, options) {
     field.append(tabs);
     options = [...(options.includes('nada') ? ['nada'] : []), ...cats.find(([name]) => name === open)[1]];
   }
+  if (key === 'costume' && HALLOWEEN) options = COSTUMES;
   const list = document.createElement('div');
   list.className = 'options';
   for (const value of options) {
@@ -2779,6 +2795,10 @@ function avatarField(key, options) {
       chip.style.background = value === 'lisa' ? avatarDraft.shirt : KITS[value].swatch;
       btn.prepend(chip);
     }
+    if (key === 'costume') {
+      btn.classList.add('costume');
+      if (value !== 'nada') btn.insertAdjacentHTML('afterbegin', avatarFaceSvg({ costume: value })); // ids da lista fixa
+    }
     btn.title = avatarName(key, value);
     btn.classList.toggle('selected', avatarDraft[key] === value);
     btn.addEventListener('click', () => {
@@ -2793,7 +2813,8 @@ function avatarField(key, options) {
 
 function saveAvatar() {
   state.avatar = sanitizeAvatar(avatarDraft);
-  savePref('avatar', JSON.stringify(state.avatar));
+  if (HALLOWEEN) costumePicked = true;
+  else savePref('avatar', JSON.stringify(state.avatar));
   $('avatar-dialog').close();
   renderLobbySeat();
   $('settings-face').innerHTML = avatarFaceSvg(state.avatar);
@@ -3010,6 +3031,10 @@ function describeError(err) {
 // ---------- Boot ----------
 
 state.avatar = loadAvatar();
+if (HALLOWEEN) {
+  document.documentElement.classList.add('halloween');
+  assignCostume();
+}
 applyTheme(DEFAULT_THEME);
 $('name').value = loadPref('name');
 $('room').value = loadPref('lastRoom');
@@ -3090,7 +3115,7 @@ $('settings-close').addEventListener('click', () => $('settings-dialog').close()
 $('awards-close').addEventListener('click', () => $('awards-dialog').close());
 $('edit-avatar-room').addEventListener('click', openAvatarEditor);
 $('avatar-random').addEventListener('click', () => {
-  avatarDraft = randomAvatar();
+  avatarDraft = HALLOWEEN ? { ...avatarDraft, costume: rollCostume([avatarDraft.costume]) } : randomAvatar();
   avatarTabs = {};
   renderAvatarEditor();
 });

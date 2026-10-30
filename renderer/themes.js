@@ -48,6 +48,55 @@ const PIXEL_ROCKET = ['...#...', '..###..', '..#.#..', '..###..', '.#####.', '##
 const PIXEL_COIN = ['.###.', '#####', '##.##', '#####', '.###.'];
 
 const THEMES = {
+  halloween: {
+    name: 'Noite de Halloween',
+    bg: '#0a0612',
+    svg: () => {
+      const rnd = seeded(31);
+      let stars = '';
+      for (let i = 0; i < 90; i++) stars += `<circle cx="${rnd() * 1440}" cy="${rnd() * 420}" r="${0.6 + rnd() * 1.2}" fill="#fff" opacity="${0.2 + rnd() * 0.6}"/>`;
+      let bats = '';
+      for (let i = 0; i < 11; i++) {
+        const [x, y, s] = [120 + rnd() * 1200, 70 + rnd() * 260, 0.5 + rnd() * 0.9];
+        bats += `<path transform="translate(${x} ${y}) scale(${s}) rotate(${-14 + rnd() * 28})" d="M0 6 Q-6 -8 -14 -6 Q-22 -14 -38 -8 Q-30 -2 -30 8 Q-24 2 -18 8 Q-12 2 -6 12 L0 8 L6 12 Q12 2 18 8 Q24 2 30 8 Q30 -2 38 -8 Q22 -14 14 -6 Q6 -8 0 6 Z" fill="#050308"/>`;
+      }
+      const grave = (x, y, s, text) => `<g transform="translate(${x} ${y}) scale(${s})">
+        <path d="M-44 90 V-22 Q-44 -64 0 -64 Q44 -64 44 -22 V90 Z" fill="#2a2638" stroke="#0a0612" stroke-width="4"/>
+        <text y="-14" text-anchor="middle" font-family="Permanent Marker" font-size="20" fill="#0f0c18">${text}</text>
+        <path d="M-22 12 H22 M-22 26 H16 M-22 40 H20" stroke="#0f0c18" stroke-width="3"/></g>`;
+      const pumpkin = (x, y, s) => `<g transform="translate(${x} ${y}) scale(${s})">
+        <circle r="110" fill="url(#th-hw-glow)"/>
+        <path d="M-5 -34 Q-4 -48 8 -50 L10 -38 Q4 -36 5 -30 Z" fill="#2f6b3a"/>
+        <ellipse rx="44" ry="34" fill="#e8590c"/><ellipse cx="-22" rx="16" ry="33" fill="#d9480f"/><ellipse cx="22" rx="16" ry="33" fill="#d9480f"/><ellipse rx="10" ry="34" fill="#f76707"/>
+        <path d="M-26 -12 L-12 -18 L-10 -4 Z M26 -12 L12 -18 L10 -4 Z" fill="#ffe066" filter="url(#th-glow)"/>
+        <path d="M-28 8 L-18 12 L-12 8 L-6 14 L0 8 L6 14 L12 8 L18 12 L28 8 Q0 34 -28 8 Z" fill="#ffe066" filter="url(#th-glow)"/></g>`;
+      return `
+        <defs>
+          <linearGradient id="th-hw-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a0612"/><stop offset=".6" stop-color="#2a0f3f"/><stop offset="1" stop-color="#5a1f2e"/></linearGradient>
+          <radialGradient id="th-hw-glow"><stop offset="0" stop-color="#ff6b00" stop-opacity=".4"/><stop offset="1" stop-color="#ff6b00" stop-opacity="0"/></radialGradient>
+          <radialGradient id="th-hw-halo"><stop offset=".3" stop-color="#ffb627" stop-opacity=".4"/><stop offset="1" stop-color="#ffb627" stop-opacity="0"/></radialGradient>
+          <radialGradient id="th-hw-moon" cx=".42" cy=".4"><stop offset="0" stop-color="#fff4c9"/><stop offset=".75" stop-color="#ffd27a"/><stop offset="1" stop-color="#e8a34a"/></radialGradient>
+        </defs>
+        <rect width="1440" height="900" fill="url(#th-hw-sky)"/>
+        ${stars}
+        <circle cx="1120" cy="170" r="330" fill="url(#th-hw-halo)"/>
+        <circle cx="1120" cy="170" r="104" fill="url(#th-hw-moon)"/>
+        <circle cx="1088" cy="140" r="16" fill="#e0ad5e" opacity=".5"/><circle cx="1150" cy="205" r="23" fill="#e0ad5e" opacity=".42"/><circle cx="1158" cy="130" r="9" fill="#e0ad5e" opacity=".5"/>
+        ${bats}
+        <path d="M0 560 L0 430 L70 430 L70 370 L96 330 L122 370 L122 430 L210 430 L210 340 L238 280 L266 340 L266 430 L330 430 L330 470 Q520 440 720 500 L720 600 L0 600 Z" fill="#100a1c"/>
+        <rect x="222" y="360" width="30" height="46" rx="15" fill="#ffb627" opacity=".55"/><rect x="84" y="384" width="24" height="30" rx="12" fill="#ffb627" opacity=".4"/>
+        <path d="M1440 590 L1280 590 Q1180 540 1060 590 Q900 520 720 560 L720 640 L1440 640 Z" fill="#0d0816"/>
+        <path d="M1360 620 L1356 440 Q1356 400 1330 370 M1356 470 Q1390 430 1420 424 M1356 510 Q1320 470 1280 470 M1330 370 Q1310 350 1296 352 M1330 370 Q1340 340 1336 320" fill="none" stroke="#050308" stroke-width="13" stroke-linecap="round"/>
+        ${CENTER_SHADE}
+        <rect y="600" width="1440" height="300" fill="#0f0a16"/>
+        ${grave(86, 590, 1, 'RIP')}${grave(230, 620, 0.78, 'LAG')}${grave(1228, 590, 0.95, 'RIP')}${grave(1370, 622, 0.76, '404')}
+        <ellipse cx="720" cy="640" rx="900" ry="60" fill="#8b6fb0" opacity=".2" filter="url(#th-soft)"/>
+        ${pumpkin(330, 660, 1)}${pumpkin(1120, 668, 0.9)}${pumpkin(30, 690, 0.8)}
+        ${tags([[60, 180, 44, '#ff6b00', 0.72, -4, 'BADERNA DAS TREVAS'], [66, 224, 24, '#b6ff3b', 0.55, -4, 'doces ou ban no servidor']])}
+        ${GRAIN}`;
+    },
+  },
+
   arena: {
     name: 'Arena eSports',
     bg: '#07070f',
@@ -696,7 +745,7 @@ const THEMES = {
   },
 };
 
-const DEFAULT_THEME = 'arena';
+const DEFAULT_THEME = HALLOWEEN ? 'halloween' : 'arena';
 
 function themeSvg(id) {
   const theme = THEMES[id] ?? THEMES[DEFAULT_THEME];
