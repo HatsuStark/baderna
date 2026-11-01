@@ -160,13 +160,16 @@ async function handleSoundMessage(member, msg) {
     renderSoundPanel();
   } else if (msg.type === 'sound') {
     if (member.sounds.has(id) || member.sounds.size >= SOUND_MAX_PER_PERSON) return;
-    if (!(msg.data instanceof ArrayBuffer) || msg.data.byteLength > SOUND_MAX_BYTES) return;
+    // Acima de um pedaço (16 KB), o PeerJS remonta e entrega Uint8Array.
+    const isBytes = msg.data instanceof ArrayBuffer || msg.data instanceof Uint8Array;
+    if (!isBytes || msg.data.byteLength > SOUND_MAX_BYTES) return;
+    const data = msg.data instanceof Uint8Array ? msg.data.slice().buffer : msg.data;
     const name = String(msg.name ?? '').trim().slice(0, SOUND_NAME_MAX) || 'Áudio';
     // Reserva a vaga antes de decodificar: vários chegam juntos.
     const sound = { id, name, buffer: null };
     member.sounds.set(id, sound);
     try {
-      const buffer = await decodeSound(msg.data);
+      const buffer = await decodeSound(data);
       if (buffer.duration > SOUND_MAX_SECONDS + SOUND_LENGTH_TOLERANCE) throw new Error('longo demais');
       sound.buffer = buffer;
     } catch (err) {
