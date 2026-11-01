@@ -109,6 +109,9 @@
         <button id="btn-share" class="btn scr" type="button" title="Compartilhar tela">
           <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
         </button>
+        <button id="btn-sounds" class="btn snd" type="button" title="Áudios da sala">
+          <svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+        </button>
         <button id="btn-settings" class="btn set" type="button" title="Configurações">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
         </button>
@@ -126,6 +129,19 @@
       <input id="pm-vol" type="range" min="0" max="100" step="5">
     </label>
     <button id="pm-mute" class="ghost" type="button"></button>
+  </div>
+
+  <!-- ---------- Áudios da sala ---------- -->
+  <div id="sound-panel" class="sound-panel" hidden>
+    <label>Volume dos áudios
+      <input id="sound-volume" type="range" min="0" max="100" step="5">
+    </label>
+    <h3 id="sound-mine-title"></h3>
+    <div id="sound-mine" class="sound-list"></div>
+    <button id="sound-add" class="ghost wide" type="button" title="MP3, OGG ou WAV · até 10 s e 512 KB">+ Adicionar áudio</button>
+    <input id="sound-file" type="file" accept="audio/*" hidden>
+    <p id="sound-status" class="status"></p>
+    <div id="sound-others" class="sound-list"></div>
   </div>
 
   <!-- ---------- Configurações ---------- -->
@@ -311,5 +327,6 @@
   <script src="themes.js"></script>
   <script src="app.js"></script>
   <script src="movies.js"></script>
+  <script src="sounds.js"></script>
 </body>
 </html>

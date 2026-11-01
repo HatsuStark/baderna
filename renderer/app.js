@@ -11,8 +11,9 @@
 // watching (quais transmissões cada um tem abertas: só essas recebem vídeo),
 // preview (foto da tela de quem transmite, a cada 4 s), caps (o que esta versão
 // sabe fazer), screen-live (comecei a transmitir: a chamada de vídeo só sai
-// quando alguém abre a transmissão). Tudo que vem de fora é validado antes de
-// chegar no DOM; texto sempre via textContent.
+// quando alguém abre a transmissão), sound, sound-remove, sound-play (áudios
+// curtos, em sounds.js). Tudo que vem de fora é validado antes de chegar no DOM;
+// texto sempre via textContent.
 
 const ROOM_PREFIX = 'baderna-v1-';
 const SPEAKING_THRESHOLD = 0.02;
@@ -216,6 +217,7 @@ async function join() {
     logEvent('entrar', { sala: room, nome: name, turn: turns ? 'sim' : 'não' });
     state.name = name;
     state.room = room;
+    sounds.ready = loadMySounds(room);
     state.mainPeer = await openPeer();
     state.myId = state.mainPeer.id;
     wireMainPeer();
@@ -292,6 +294,7 @@ async function teardown() {
   relayLogged = 0;
   stopShare();
   closeWatch();
+  resetSounds();
   for (const id of [...state.members.keys()]) removeMember(id);
   for (const id of [...state.screens.keys()]) unregisterScreen(id);
   dialQueue.length = 0;
@@ -552,7 +555,7 @@ function attachConn(member, conn) {
     conn.send(myProfile());
     sendMoviesTo(member);
     conn.send({ type: 'watching', ids: [...state.tuned] });
-    conn.send({ type: 'caps', ondemand: true });
+    conn.send({ type: 'caps', ondemand: true, sounds: true });
     if (state.screen) {
       conn.send({ type: 'screen-live' });
       if (state.previews.has(state.myId)) conn.send({ type: 'preview', img: state.previews.get(state.myId) });
@@ -771,6 +774,13 @@ function handleMessage(member, msg) {
     case 'caps':
       member.onDemand = !!msg.ondemand;
       if (state.screen) syncScreenOut(member);
+      member.soundsOk = !!msg.sounds;
+      if (member.soundsOk) sendSoundsTo(member);
+      break;
+    case 'sound':
+    case 'sound-remove':
+    case 'sound-play':
+      handleSoundMessage(member, msg);
       break;
     case 'movies':
       handleMoviesMessage(msg);
@@ -811,6 +821,7 @@ function removeMember(id, reason) {
   if (state.leaving) return;
   if (personMenuFor === m) closePersonMenu();
   updateLiveRail();
+  renderSoundPanel();
   // Host inalcançável por mim não quer dizer que saiu: os outros ainda o veem.
   if (id === state.hostId && reason !== 'unreachable') handleHostLeft();
   // Nunca chegou a conectar: fantasma some quieto; gente de verdade, um aviso.

@@ -438,8 +438,23 @@ button.chip:disabled { opacity: 1; }
 .btn.scr { color: var(--lime); }
 .btn.scr.on { background: var(--lime); color: #111; }
 .btn.scr.on svg { stroke: #111; }
+.btn.snd { color: #a78bfa; }
 .btn.set { color: var(--amber); }
 .btn.out { color: #fff; background: var(--red); border-color: var(--red); box-shadow: 0 0 18px var(--red); }
+
+/* Áudios da sala: abre ao lado do dock e deixa a sala usável por trás. */
+.sound-panel {
+  position: fixed; z-index: 60; right: 104px; bottom: 24px; width: 300px; max-height: calc(100vh - var(--titlebar-h) - 60px); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px; padding: 14px;
+  background: var(--panel-solid); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, .6);
+}
+.sound-panel h3 { margin: 4px 0 0; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sound-panel input[type=range] { width: 100%; padding: 0; accent-color: #a78bfa; }
+.sound-panel .status:empty { display: none; }
+.sound-list { display: flex; flex-direction: column; gap: 6px; }
+.sound-list:empty { display: none; }
+.sound-row { display: flex; gap: 6px; }
+.sound-play { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- Diálogos ---------- */
 
