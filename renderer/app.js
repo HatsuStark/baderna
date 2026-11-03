@@ -13,7 +13,8 @@
 // sabe fazer), screen-live (comecei a transmitir: a chamada de vídeo só sai
 // quando alguém abre a transmissão), sound, sound-remove, sound-play (áudios
 // curtos, em sounds.js), mod, knock, knock-answer, knock-done (mutar pra todos,
-// retirar e pedido de volta, em roles.js). Tudo que vem de fora é validado antes de chegar no DOM;
+// retirar e pedido de volta, em roles.js), relay* (ajuda de upload na
+// transmissão, em relay.js). Tudo que vem de fora é validado antes de chegar no DOM;
 // texto sempre via textContent.
 
 const ROOM_PREFIX = 'baderna-v1-';
@@ -320,6 +321,7 @@ async function teardown() {
   state.leaving = true;
   for (const w of watchedPaths) await pollPath(w);
   logRelaySummary(true);
+  resetRelays();
   relayUsage.clear();
   watchedPaths.clear();
   relayLogged = 0;
@@ -448,10 +450,17 @@ function wireMainPeer() {
   peer.on('call', (call) => {
     const member = upsertMember(call.peer, {});
     if (call.metadata?.kind === 'screen') {
+      // Repasse do ajudante (relay.js): a tela é de quem transmite, não de quem ligou.
+      const relayOf = call.metadata.relayOf;
+      const owner = typeof relayOf === 'string' ? state.members.get(relayOf) : member;
+      if (!owner) {
+        call.close();
+        return;
+      }
       // Só recebe. Responde na ordem de codec de quem manda: é a ordem da resposta que vale.
       const codecs = sanitizeCodecOrder(call.metadata.codecs);
       call.answer(undefined, { sdpTransform: (sdp) => opusStereo(preferVideoCodecs(sdp, codecs)) });
-      attachScreenIn(member, call);
+      attachScreenIn(owner, call);
       return;
     }
     call.answer(state.sendStream);
@@ -600,7 +609,7 @@ function attachConn(member, conn) {
     conn.send(myProfile());
     sendMoviesTo(member);
     conn.send({ type: 'watching', ids: [...state.tuned] });
-    conn.send({ type: 'caps', ondemand: true, sounds: true });
+    conn.send({ type: 'caps', ondemand: true, sounds: true, relay: true });
     if (state.screen) {
       conn.send({ type: 'screen-live' });
       if (state.previews.has(state.myId)) conn.send({ type: 'preview', img: state.previews.get(state.myId) });
@@ -812,6 +821,7 @@ function handleMessage(member, msg) {
     case 'screen-stop':
       member.screenLive = false;
       closeScreenIn(member);
+      relayStreamerGone(member.id);
       break;
     case 'screen-live':
       member.screenLive = true;
@@ -820,6 +830,7 @@ function handleMessage(member, msg) {
       break;
     case 'caps':
       member.onDemand = !!msg.ondemand;
+      member.relayOk = !!msg.relay;
       if (state.screen) syncScreenOut(member);
       member.soundsOk = !!msg.sounds;
       if (member.soundsOk) sendSoundsTo(member);
@@ -836,6 +847,7 @@ function handleMessage(member, msg) {
       member.watchingIds = Array.isArray(msg.ids) ? msg.ids.filter((x) => typeof x === 'string').slice(0, 8) : [];
       updateLiveRail();
       if (state.screen) {
+        relayWatchingChanged(member);
         syncScreenOut(member);
         retuneScreen();
       }
@@ -845,6 +857,13 @@ function handleMessage(member, msg) {
       break;
     case 'mod':
       handleModMessage(member, msg);
+      break;
+    case 'relay':
+    case 'relay-offer':
+    case 'relay-stop':
+    case 'relay-busy':
+    case 'relay-fail':
+      handleRelayMessage(member, msg);
       break;
     case 'knock':
     case 'knock-answer':
@@ -875,6 +894,7 @@ function removeMember(id, reason) {
   updateCount();
   logEvent('saiu da lista', m.name, shortId(id), reason ?? 'caiu');
   if (state.leaving) return;
+  relayMemberGone(id, m.name);
   if (personMenuFor === m) closePersonMenu();
   updateLiveRail();
   renderSoundPanel();
@@ -1551,6 +1571,7 @@ function updateShareEstimate() {
 // Separado do seletor pra dar pra testar com qualquer stream de vídeo.
 async function beginShare(stream, presetKey, mode, audio = null) {
   stopShare();
+  stopHelping(); // quem transmite não sobra upload pra repassar
   const codecs = await ensureCodecOrder();
   const preset = SHARE_PRESETS[presetKey] ?? SHARE_PRESETS['1080p30'];
   const track = stream.getVideoTracks()[0];
@@ -1594,6 +1615,7 @@ function stopShare() {
     m.screenOut = null;
   }
   broadcast({ type: 'screen-stop' });
+  state.relays.delete(state.myId);
   unregisterScreen(state.myId);
   updateDock();
   renderSelf();
@@ -1606,6 +1628,8 @@ const CAPS_WAIT_MS = 1500;
 
 function syncScreenOut(member) {
   if (!state.screen || !state.members.has(member.id)) return;
+  // Recebe pelo ajudante (relay.js): nem abre nem fecha a cópia direta aqui.
+  if (isRelayedViewer(member)) return;
   const wants = member.onDemand ? !!member.watchingIds?.includes(state.myId) : true;
   if (wants) sendScreenTo(member);
   else if (member.screenOut && member.onDemand) {
@@ -1644,9 +1668,13 @@ function attachScreenIn(member, call) {
   call.on('stream', (stream) => {
     registerScreen(member.id, `Tela de ${member.name}`, stream, true);
     renderSeat(member);
+    if (state.helping?.streamer === member.id) syncRelayOut();
   });
   call.on('close', () => {
     if (member.screenIn !== call) return;
+    if (call.metadata?.relayOf) relayInClosed(member, call);
+    // Sem a cópia de quem transmite, não tenho o que repassar.
+    if (state.helping?.streamer === member.id) stopHelping();
     // Versão nova fecha a chamada quando eu saio da transmissão; ela continua
     // ao vivo (foto na frente do boneco). Versão antiga só fecha quando acaba.
     if (member.screenLive) detachScreenIn(member);
@@ -1914,6 +1942,7 @@ function renderWatch() {
   $('screen-label').textContent = ids.map((id) => state.screens.get(id).label).join('  +  ');
   $('screen-volume').parentElement.hidden = !ids.some((id) => state.screens.get(id).audible);
   syncScreenBar();
+  updateHelpButton();
   $('screen-view').hidden = false;
   updateLiveRail();
   sendWatching();
@@ -2615,11 +2644,11 @@ function createSeat(member) {
   return seat;
 }
 
-function fillSeat(seat, { id, name, avatar, muted, deaf, sharing, self, silenced, modMuted, creator, host }) {
-  const key = JSON.stringify(avatar);
+function fillSeat(seat, { id, name, avatar, muted, deaf, sharing, self, silenced, modMuted, creator, host, helping }) {
+  const key = JSON.stringify(avatar) + (helping ? ':ajudando' : '');
   if (seat.dataset.avatar !== key) {
     seat.dataset.avatar = key;
-    seat.querySelector('.figure').innerHTML = avatarSeatSvg(avatar); // sanitizado em avatar.js
+    seat.querySelector('.figure').innerHTML = avatarSeatSvg(avatar, { helping }); // sanitizado em avatar.js
   }
   seat.dataset.id = id;
   seat.classList.toggle('self', !!self);
@@ -2638,6 +2667,7 @@ function fillSeat(seat, { id, name, avatar, muted, deaf, sharing, self, silenced
   else if (deaf) badge('deaf', 'SURDO');
   else if (muted) badge('muted', 'MUDO');
   if (silenced) badge('silenced', 'SILENCIADO P/ MIM');
+  if (helping) badge('helping', '🙌 DOANDO UPLOAD');
   seat.querySelector('.badges').replaceChildren(...badges);
 }
 
@@ -2645,7 +2675,7 @@ function renderSeat(m) {
   fillSeat(m.seat, {
     id: m.id, name: m.name, avatar: m.avatar,
     muted: m.muted, deaf: m.deaf, sharing: state.screens.has(m.id), silenced: personPref(m.name).mute,
-    modMuted: isModMuted(m), creator: isCreator(m.id), host: isHost(m.id),
+    modMuted: isModMuted(m), creator: isCreator(m.id), host: isHost(m.id), helping: isHelper(m.id),
   });
   // Nome e rosto podem chegar depois da transmissão: atualiza o card dela.
   const card = state.screens.get(m.id)?.card;
@@ -2660,7 +2690,7 @@ function renderSelf() {
   fillSeat(state.selfSeat, {
     id: state.myId, name: state.name, avatar: state.avatar,
     muted: state.muted, deaf: state.deaf, sharing: !!state.screen, self: true, modMuted: roles.modMuted,
-    creator: isCreator(state.myId), host: isHost(state.myId),
+    creator: isCreator(state.myId), host: isHost(state.myId), helping: isHelper(state.myId),
   });
 }
 

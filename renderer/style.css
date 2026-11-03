@@ -443,6 +443,20 @@ button.chip:disabled { opacity: 1; }
 .badge.share { color: var(--lime); border-color: rgba(182, 255, 59, .55); cursor: pointer; }
 
 .badge.silenced { color: var(--muted); border-color: rgba(255, 255, 255, .25); }
+.badge.helping { color: var(--cyan); border-color: rgba(var(--cyan-rgb), .55); background: rgba(var(--cyan-rgb), .12); }
+
+/* Emprestando upload (relay.js): faíscas sobem das mãos levantadas. */
+svg.avatar-seat.helping { overflow: visible; }
+svg.avatar-seat .ki circle { fill: #9ff3ff; stroke: #19f0ff; stroke-width: 1; animation: ki-rise 1.4s ease-out infinite; }
+svg.avatar-seat .ki .k2 { animation-delay: .45s; }
+svg.avatar-seat .ki .k3 { animation-delay: .9s; }
+@keyframes ki-rise {
+  from { transform: translateY(0); opacity: 0; }
+  20% { opacity: 1; }
+  to { transform: translateY(-26px); opacity: 0; }
+}
+#screen-help { padding: 5px 12px; font-size: 12px; font-weight: 700; color: var(--cyan); border-color: rgba(var(--cyan-rgb), .5); white-space: nowrap; }
+#screen-help.on { background: rgba(var(--cyan-rgb), .15); }
 .badge.creator { color: var(--amber); border-color: rgba(255, 182, 39, .55); }
 .badge.host { color: var(--cyan); border-color: rgba(var(--cyan-rgb), .55); }
 .seat[title] { cursor: pointer; }

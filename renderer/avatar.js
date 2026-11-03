@@ -915,7 +915,7 @@ function avatarHead(a) {
 // se esse estiver escondido (lobby durante a sala) o recorte some.
 let avatarUid = 0;
 
-function avatarBody(a) {
+function avatarBody(a, noHands = false) {
   const clipId = `av-torso-${++avatarUid}`;
   const hands = a.topColor;
   const kit = KITS[a.kit] ?? KITS.lisa;
@@ -937,7 +937,7 @@ function avatarBody(a) {
     ${avatarSymbol(a)}
     ${avatarNeckItem(a)}
     ${PREMIUM_SKINS[a.costume]?.over?.(a, t) ?? ''}
-    ${body.hands.map(([cx, cy, r]) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${hands}" stroke="${INK}" stroke-width="2.5"/>`).join('')}
+    ${noHands ? '' : body.hands.map(([cx, cy, r]) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${hands}" stroke="${INK}" stroke-width="2.5"/>`).join('')}
     <rect x="50" y="146" width="26" height="22" rx="4" fill="${a.pants}" stroke="${INK}" stroke-width="3"/>
     <rect x="84" y="146" width="26" height="22" rx="4" fill="${a.pants}" stroke="${INK}" stroke-width="3"/>
     <ellipse cx="60" cy="172" rx="16" ry="7" fill="${INK}" stroke="${INK}" stroke-width="2.5"/>
@@ -2049,18 +2049,46 @@ function rollCostume(used = []) {
 
 // Boneco completo sentado; as duas bocas vão no SVG e o CSS escolhe qual
 // aparece (classe .speaking no pai), sem redesenhar a cada frame.
-function avatarSeatSvg(raw) {
+// helping: emprestando upload pra uma transmissão. Braços pra cima, mãos
+// abertas pro céu doando energia (o item da mão fica guardado).
+function avatarSeatSvg(raw, { helping = false } = {}) {
   const a = dressed(sanitizeAvatar(raw));
   const def = CHAIRS[a.chair] ?? CHAIRS.puff;
   const chair = typeof def === 'function' ? def(a) : def;
-  return `<svg class="avatar-seat" viewBox="0 -8 160 216" aria-hidden="true">
+  return `<svg class="avatar-seat${helping ? ' helping' : ''}" viewBox="0 -8 160 216" aria-hidden="true">
     <ellipse cx="80" cy="206" rx="70" ry="7" fill="#000" opacity=".45"/>
     ${chair.back}
-    ${avatarBody(a)}
+    ${helping ? avatarRaisedArms(a) : ''}
+    ${avatarBody(a, helping)}
     ${avatarHead(a)}
     ${chair.front}
-    ${avatarHandItem(a)}
+    ${helping ? avatarEnergy(a) : avatarHandItem(a)}
   </svg>`;
+}
+
+function avatarRaisedArms(a) {
+  const body = bodyOf(a);
+  const sleeve = kitMain(a);
+  return body.hands.map(([hx, , hr], i) => {
+    const side = i ? 1 : -1;
+    const sx = 80 + side * Math.max(22, Math.abs(hx - 80) - 12);
+    const sy = body.top + 10;
+    const ex = 80 + side * 60;
+    const ey = 6;
+    const arm = `M${sx} ${sy} Q${ex + side * 6} ${(sy + ey) / 2 + 10} ${ex} ${ey + hr}`;
+    return `<path d="${arm}" fill="none" stroke="${INK}" stroke-width="${hr + 11}" stroke-linecap="round"/>
+      <path d="${arm}" fill="none" stroke="${sleeve}" stroke-width="${hr + 6}" stroke-linecap="round"/>
+      <circle cx="${ex}" cy="${ey}" r="${hr + 1}" fill="${a.topColor}" stroke="${INK}" stroke-width="2.5"/>`;
+  }).join('');
+}
+
+// Faíscas subindo das mãos (animadas no style.css).
+function avatarEnergy() {
+  return [-60, 60].map((dx, i) => `<g class="ki" transform="translate(${80 + dx} -2)">
+    <circle class="k1" cx="${i ? -4 : 4}" cy="0" r="3.2"/>
+    <circle class="k2" cx="0" cy="0" r="2.4"/>
+    <circle class="k3" cx="${i ? 5 : -5}" cy="0" r="2"/>
+  </g>`).join('');
 }
 
 // Só o rosto, pra miniatura no chat.
