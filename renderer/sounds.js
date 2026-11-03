@@ -151,7 +151,8 @@ async function handleSoundMessage(member, msg) {
     if (now - (member.lastSoundAt ?? 0) < SOUND_COOLDOWN_MS) return;
     const owner = typeof msg.owner === 'string' ? msg.owner : '';
     const sound = findSound(owner, id);
-    if (!sound?.buffer) return;
+    // Mutado pra todos por um moderador: os áudios dele também não tocam.
+    if (!sound?.buffer || isModMuted(member)) return;
     member.lastSoundAt = now;
     addSystem(`🔊 ${member.name}: ${sound.name}`);
     if (!personPref(member.name).mute) playSoundBuffer(member.id, sound.buffer);

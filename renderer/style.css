@@ -210,6 +210,11 @@ button.chip:disabled { opacity: 1; }
   text-align: center;
 }
 .sys::before { content: '● '; color: var(--cyan); }
+/* Retirado pedindo pra voltar (roles.js): só host e criador veem os botões. */
+.sys.knock { display: flex; align-items: center; gap: 10px; color: #dad7e3; border-color: rgba(255, 182, 39, .55); }
+.sys.knock::before { content: '🚪'; }
+.sys.knock button { padding: 3px 10px; font-size: 12px; font-weight: 600; }
+.sys.knock .danger { color: var(--red); border-color: rgba(255, 59, 92, .5); }
 
 .card {
   margin-top: 8px; width: 360px; border-radius: 12px; overflow: hidden;
@@ -222,6 +227,44 @@ button.chip:disabled { opacity: 1; }
 .card .meta button { color: var(--cyan); border-color: rgba(var(--cyan-rgb), .5); font-weight: 600; padding: 5px 10px; }
 .card.ended { border-color: var(--line); box-shadow: none; opacity: .6; }
 .card.ended .shot::after { content: 'transmissão encerrada'; color: var(--muted); font-size: 13px; }
+
+/* ---------- Links no chat (links.js) ---------- */
+
+.msg a.link { color: var(--cyan); text-decoration: none; }
+.msg a.link:hover { text-decoration: underline; }
+.link-card {
+  margin-top: 8px; width: min(400px, 100%); display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 12px 12px; border-radius: 10px; background: rgba(0, 0, 0, .35);
+  border: 1px solid var(--line); border-left: 4px solid var(--red);
+}
+.link-card.tweet { border-left-color: #e8e6ee; }
+.lc-site { font-size: 11px; color: var(--muted); }
+.lc-author { font-size: 12.5px; color: #dad7e3; }
+.lc-author:empty { display: none; }
+.lc-title { font-weight: 700; color: var(--cyan); overflow-wrap: anywhere; }
+.lc-text { margin: 0; font-size: 13.5px; color: #dad7e3; white-space: pre-wrap; overflow-wrap: anywhere; }
+.lc-text:empty { display: none; }
+.lc-shot {
+  position: relative; padding: 0; border: none; border-radius: 8px; overflow: hidden; background: #000; cursor: pointer;
+  display: block; width: 100%;
+}
+.lc-shot[hidden] { display: none; }
+.lc-shot img { display: block; width: 100%; max-height: 300px; object-fit: cover; }
+.lc-shot.play::after {
+  content: '▶'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 60px; height: 42px; border-radius: 12px; display: grid; place-items: center;
+  background: rgba(255, 0, 0, .85); color: #fff; font-size: 18px;
+}
+.lc-shot.play:hover::after { background: #f00; }
+.lc-actions { display: flex; gap: 8px; }
+.lc-actions button { padding: 5px 10px; font-size: 12px; font-weight: 600; }
+
+.embed-view { z-index: 4; }
+#embed-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.embed-view iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; color-scheme: dark; }
+/* Post do X: coluna estreita no meio, como no site. */
+.embed-view.tweet .screen-box { background: #0d0d12; overflow: auto; }
+.embed-view.tweet iframe { left: 50%; width: min(560px, 100%); transform: translateX(-50%); background: transparent; }
 
 .composer { flex: none; display: flex; justify-content: center; padding: 4px 132px 8px 12px; gap: 0; }
 .composer input {
@@ -400,6 +443,8 @@ button.chip:disabled { opacity: 1; }
 .badge.share { color: var(--lime); border-color: rgba(182, 255, 59, .55); cursor: pointer; }
 
 .badge.silenced { color: var(--muted); border-color: rgba(255, 255, 255, .25); }
+.badge.creator { color: var(--amber); border-color: rgba(255, 182, 39, .55); }
+.badge.host { color: var(--cyan); border-color: rgba(var(--cyan-rgb), .55); }
 .seat[title] { cursor: pointer; }
 
 /* Menu de uma pessoa: volume e silenciar só pra mim. */
@@ -410,6 +455,11 @@ button.chip:disabled { opacity: 1; }
 .person-menu b { font-family: var(--marker); font-weight: 400; font-size: 18px; color: var(--cyan); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .person-menu label { flex-direction: row; flex-wrap: wrap; justify-content: space-between; }
 .person-menu input[type=range] { width: 100%; padding: 0; accent-color: var(--cyan); }
+.pm-mod { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+.pm-mod[hidden] { display: none; }
+.pm-mod span { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.pm-mod .danger { color: var(--red); border-color: rgba(255, 59, 92, .5); }
+.pm-mod .danger.confirm { background: rgba(255, 59, 92, .2); }
 
 .seat.preview { padding-top: 0; }
 .seat.preview:hover .m-open { display: inline; }

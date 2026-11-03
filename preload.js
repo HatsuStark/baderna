@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('baderna', {
   onScreenAudioData: (cb) => subscribe('screen-audio:data', cb),
   onScreenAudioError: (cb) => subscribe('screen-audio:error', cb),
   searchMovies: (query) => ipcRenderer.invoke('movies:search', query),
+  linkPreview: (url) => ipcRenderer.invoke('link:preview', url),
+  openExternal: (url) => ipcRenderer.send('link:open', url),
   setHotkeys: (keys) => ipcRenderer.invoke('hotkeys:set', keys),
   iceServers: () => ipcRenderer.invoke('ice:servers'),
   log: (line) => ipcRenderer.send('log', line),

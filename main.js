@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, nativeImage, session, desktopCapturer, ipcMain, globalShortcut } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, session, desktopCapturer, ipcMain, globalShortcut, shell } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -56,6 +56,17 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow = win;
+
+  // Janela nova (ex.: "assistir no YouTube" dentro do player) vai pro
+  // navegador; a janela do app nunca sai da página dela.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    e.preventDefault();
+    openExternal(url);
+  });
 
   // Fechar esconde na bandeja (dá pra desligar nas configurações): quem está
   // numa sala continua conversando. Fechar de verdade é pelo menu da bandeja.
@@ -371,6 +382,87 @@ ipcMain.handle('movies:search', async (_e, query) => {
   }
 });
 
+// ---------- Links do chat ----------
+// Prévia de YouTube (oEmbed oficial) e de post do X (api.fxtwitter.com, que
+// devolve texto e fotos; sem ela, o oEmbed oficial, só texto). Devolve só
+// texto e foto de domínio liberado no CSP do renderer.
+
+const PREVIEW_CACHE_MAX = 200;
+const previewCache = new Map(); // url → Promise<info | null>
+
+function openExternal(url) {
+  try {
+    const u = new URL(String(url));
+    if (u.protocol === 'https:' || u.protocol === 'http:') shell.openExternal(u.href);
+  } catch {}
+}
+
+ipcMain.on('link:open', (_e, url) => openExternal(url));
+
+const clip = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+
+async function getJson(url) {
+  const res = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`${res.status}`);
+  return res.json();
+}
+
+async function youtubePreview(id) {
+  const watch = `https://www.youtube.com/watch?v=${id}`;
+  const data = await getJson(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(watch)}`);
+  return { title: clip(data.title, 200), author: clip(data.author_name, 80) };
+}
+
+function htmlToText(html) {
+  return String(html)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&mdash;/g, '—');
+}
+
+async function tweetPreview(id) {
+  try {
+    const { tweet } = await getJson(`https://api.fxtwitter.com/status/${id}`);
+    const photo = tweet?.media?.photos?.[0]?.url ?? tweet?.media?.videos?.[0]?.thumbnail_url ?? '';
+    return {
+      title: clip(tweet?.author?.name, 80) + (tweet?.author?.screen_name ? ` (@${clip(tweet.author.screen_name, 20)})` : ''),
+      text: clip(tweet?.text, 600),
+      image: /^https:\/\/pbs\.twimg\.com\//.test(photo) ? photo : '',
+    };
+  } catch {
+    const data = await getJson(`https://publish.twitter.com/oembed?omit_script=1&url=${encodeURIComponent(`https://twitter.com/i/status/${id}`)}`);
+    const p = /<p[^>]*>([\s\S]*?)<\/p>/.exec(String(data.html ?? ''));
+    return { title: clip(data.author_name, 80), text: clip(p ? htmlToText(p[1]) : '', 600), image: '' };
+  }
+}
+
+function previewFor(raw) {
+  let u;
+  try { u = new URL(String(raw)); } catch { return null; }
+  const host = u.hostname.toLowerCase().replace(/^(www|m|mobile|music)\./, '');
+  if (host === 'youtu.be' || host === 'youtube.com') {
+    const id = host === 'youtu.be' ? u.pathname.slice(1)
+      : /^\/(?:shorts|live|embed)\/([\w-]{11})/.exec(u.pathname)?.[1] ?? u.searchParams.get('v');
+    return /^[\w-]{11}$/.test(id ?? '') ? { key: `yt:${id}`, load: () => youtubePreview(id) } : null;
+  }
+  if (['twitter.com', 'x.com', 'fxtwitter.com', 'vxtwitter.com', 'fixupx.com', 'fixvx.com'].includes(host)) {
+    const id = /^\/(?:\w{1,15}|i)\/status(?:es)?\/(\d{1,25})/.exec(u.pathname)?.[1];
+    return id ? { key: `tw:${id}`, load: () => tweetPreview(id) } : null;
+  }
+  return null;
+}
+
+ipcMain.handle('link:preview', (_e, url) => {
+  const p = previewFor(url);
+  if (!p) return null;
+  if (!previewCache.has(p.key)) {
+    if (previewCache.size >= PREVIEW_CACHE_MAX) previewCache.delete(previewCache.keys().next().value);
+    previewCache.set(p.key, p.load().catch(() => null));
+  }
+  return previewCache.get(p.key);
+});
+
 // ---------- Áudio da tela via proc-audio.exe ----------
 // Janela: captura só o processo dono (e filhos). Tela inteira: tudo menos a
 // Baderna, pra não mandar de volta a voz dos amigos.
@@ -430,9 +522,21 @@ app.whenReady().then(() => {
   // no setDisplayMediaRequestHandler abaixo), tela cheia de elemento e
   // escrita na área de transferência (copiar o código da sala); nega o resto.
   const allowed = new Set(['media', 'speaker-selection', 'display-capture', 'fullscreen', 'clipboard-sanitized-write']);
-  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(allowed.has(permission));
+  // Players do chat (YouTube/X, em iframe) só ganham tela cheia.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    const fromApp = String(details?.requestingUrl ?? '').startsWith('file:');
+    callback(allowed.has(permission) && (fromApp || permission === 'fullscreen'));
   });
+
+  // O player do YouTube embutido recusa página sem Referer (erro 153), e
+  // página file:// não manda nenhum. Vai o do próprio player.
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['https://www.youtube-nocookie.com/*'] },
+    (details, callback) => {
+      if (!details.requestHeaders.Referer) details.requestHeaders.Referer = 'https://www.youtube-nocookie.com/';
+      callback({ requestHeaders: details.requestHeaders });
+    },
+  );
 
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     const id = pendingSourceId;

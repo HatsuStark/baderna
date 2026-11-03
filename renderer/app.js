@@ -12,7 +12,8 @@
 // preview (foto da tela de quem transmite, a cada 4 s), caps (o que esta versão
 // sabe fazer), screen-live (comecei a transmitir: a chamada de vídeo só sai
 // quando alguém abre a transmissão), sound, sound-remove, sound-play (áudios
-// curtos, em sounds.js). Tudo que vem de fora é validado antes de chegar no DOM;
+// curtos, em sounds.js), mod, knock, knock-answer, knock-done (mutar pra todos,
+// retirar e pedido de volta, em roles.js). Tudo que vem de fora é validado antes de chegar no DOM;
 // texto sempre via textContent.
 
 const ROOM_PREFIX = 'baderna-v1-';
@@ -192,7 +193,10 @@ function broadcast(msg) {
 }
 
 function myProfile() {
-  return { type: 'profile', name: state.name, avatar: state.avatar, muted: state.muted, deaf: state.deaf };
+  return {
+    type: 'profile', name: state.name, avatar: state.avatar, muted: state.muted, deaf: state.deaf,
+    key: myKey(), sig: roles.sig,
+  };
 }
 
 // ---------- Entrar / sair ----------
@@ -220,10 +224,12 @@ async function join() {
     sounds.ready = loadMySounds(room);
     state.mainPeer = await openPeer();
     state.myId = state.mainPeer.id;
+    await signMyId();
     wireMainPeer();
 
     if (await tryClaimBeacon()) {
       state.seq = 0;
+      startRoles(room);
       // Sala salva volta com o último tema usado nela. Em evento vale o tema
       // dele, que também não fica grudado na sala depois.
       const savedTheme = savedRoom(room)?.theme;
@@ -251,26 +257,51 @@ async function join() {
 function joinViaBeacon() {
   return new Promise((resolve, reject) => {
     const conn = state.mainPeer.connect(ROOM_PREFIX + state.room, {
-      metadata: { name: state.name },
+      metadata: { name: state.name, key: myKey() },
       reliable: true,
     });
-    const timer = setTimeout(() => {
+    const giveUp = (ms) => setTimeout(() => {
       conn.close();
       reject(new Error('A sala não respondeu. Tente de novo.'));
-    }, WELCOME_TIMEOUT_MS);
+    }, ms);
+    let timer = giveUp(WELCOME_TIMEOUT_MS);
 
     conn.on('data', (msg) => {
+      // Fui retirado antes: o host pergunta pra moderação se posso voltar.
+      if (msg?.type === 'knock-wait') {
+        clearTimeout(timer);
+        timer = giveUp(KNOCK_TIMEOUT_MS + WELCOME_TIMEOUT_MS);
+        setLobbyStatus('Você foi retirado dessa sala. Pedindo pra voltar… espera o host ou o criador aprovar.');
+        return;
+      }
+      if (msg?.type === 'denied') {
+        clearTimeout(timer);
+        conn.close();
+        reject(new Error('Não deixaram você voltar pra essa sala.'));
+        return;
+      }
       if (msg?.type !== 'welcome') return;
       clearTimeout(timer);
       conn.close();
       state.seq = msg.seq;
       state.hostId = msg.hostId;
+      applyWelcomeRoles(msg.roles);
       if (THEMES[msg.theme]) state.theme = msg.theme;
       assignCostume(msg.costumes);
       for (const m of msg.members) connectTo(m.id, m.name, m.seq);
       resolve();
     });
   });
+}
+
+// Um moderador me tirou: sai sem os prêmios e avisa no lobby.
+async function kickedOut(text) {
+  if (!state.mainPeer) return;
+  await teardown();
+  costumePicked = false;
+  showLobby();
+  startPreview();
+  setLobbyStatus(text);
 }
 
 async function leave() {
@@ -294,6 +325,7 @@ async function teardown() {
   relayLogged = 0;
   stopShare();
   closeWatch();
+  closeEmbed();
   resetSounds();
   for (const id of [...state.members.keys()]) removeMember(id);
   for (const id of [...state.screens.keys()]) unregisterScreen(id);
@@ -303,6 +335,7 @@ async function teardown() {
   clearTimeout(state.redialTimer);
   destroyPeer(state.beacon);
   destroyPeer(state.mainPeer);
+  resetRoles();
   state.localStream?.getTracks().forEach((t) => t.stop());
   cancelAnimationFrame(state.rafId);
   clearInterval(state.statsTimer);
@@ -331,21 +364,9 @@ function becomeHost() {
 
   state.beacon.on('connection', (conn) => {
     conn.on('open', () => {
-      const seq = state.nextSeq++;
-      conn.send({
-        type: 'welcome',
-        seq,
-        hostId: state.myId,
-        theme: state.theme,
-        costumes: [state.avatar, ...[...state.members.values()].map((m) => m.avatar)].map((a) => a?.costume).filter(Boolean),
-        members: [...state.roster].map(([id, r]) => ({ id, ...r })),
-      });
-      state.roster.set(conn.peer, { name: cleanName(conn.metadata?.name), seq });
-      // Se o recém-chegado não completar a conexão comigo, some da lista.
-      setTimeout(() => {
-        if (!state.members.has(conn.peer)) state.roster.delete(conn.peer);
-      }, ROSTER_STALE_MS);
-      setTimeout(() => conn.close(), 1000);
+      // Retirado antes: fica esperando o host ou o criador aprovar (roles.js).
+      if (isBanned(conn.peer, conn.metadata?.key)) knock(conn);
+      else sendWelcome(conn);
     });
   });
   state.beacon.on('disconnected', () => state.beacon && !state.beacon.destroyed && state.beacon.reconnect());
@@ -353,6 +374,25 @@ function becomeHost() {
 
   broadcast({ type: 'host', hostId: state.myId });
   renderAll();
+}
+
+function sendWelcome(conn) {
+  const seq = state.nextSeq++;
+  conn.send({
+    type: 'welcome',
+    seq,
+    hostId: state.myId,
+    theme: state.theme,
+    costumes: [state.avatar, ...[...state.members.values()].map((m) => m.avatar)].map((a) => a?.costume).filter(Boolean),
+    members: [...state.roster].map(([id, r]) => ({ id, ...r })),
+    roles: rolesForWelcome(),
+  });
+  state.roster.set(conn.peer, { name: cleanName(conn.metadata?.name), seq });
+  // Se o recém-chegado não completar a conexão comigo, some da lista.
+  setTimeout(() => {
+    if (!state.members.has(conn.peer)) state.roster.delete(conn.peer);
+  }, ROSTER_STALE_MS);
+  setTimeout(() => conn.close(), 1000);
 }
 
 function handleHostLeft() {
@@ -389,7 +429,12 @@ function wireMainPeer() {
   const peer = state.mainPeer;
 
   peer.on('connection', (conn) => {
-    const { name, seq, avatar } = conn.metadata ?? {};
+    const { name, seq, avatar, key } = conn.metadata ?? {};
+    if (isBanned(conn.peer, key)) {
+      logEvent('cargos: retirado tentou conectar', shortId(conn.peer));
+      conn.on('open', () => conn.close());
+      return;
+    }
     const isNew = !state.members.has(conn.peer);
     const member = upsertMember(conn.peer, { name, seq, avatar });
     attachConn(member, conn);
@@ -483,7 +528,7 @@ function dialMember(member) {
   member.connAttempts = (member.connAttempts ?? 0) + 1;
   const old = member.conn;
   attachConn(member, state.mainPeer.connect(member.id, {
-    metadata: { name: state.name, seq: state.seq, avatar: state.avatar },
+    metadata: { name: state.name, seq: state.seq, avatar: state.avatar, key: myKey() },
     reliable: true,
   }));
   old?.close();
@@ -745,6 +790,7 @@ function handleMessage(member, msg) {
       const before = member.name;
       upsertMember(member.id, { name: msg.name, avatar: msg.avatar, muted: msg.muted, deaf: msg.deaf });
       if (before !== '…' && before !== member.name) addSystem(narrate('renamed', { b: before, n: member.name }));
+      verifyMemberKey(member, msg.key, msg.sig);
       break;
     }
     case 'chat':
@@ -758,7 +804,8 @@ function handleMessage(member, msg) {
       }
       break;
     case 'host':
-      if (typeof msg.hostId !== 'string') break;
+      // Só vale quem anuncia a si mesmo (quem assumiu o código da sala).
+      if (msg.hostId !== member.id) break;
       state.hostId = msg.hostId;
       renderAll();
       break;
@@ -796,13 +843,22 @@ function handleMessage(member, msg) {
     case 'preview':
       handlePreview(member, msg);
       break;
+    case 'mod':
+      handleModMessage(member, msg);
+      break;
+    case 'knock':
+    case 'knock-answer':
+    case 'knock-done':
+      handleKnockMessage(member, msg);
+      break;
     case 'bye':
       removeMember(member.id, 'bye');
       break;
   }
 }
 
-// reason 'bye': saiu pelo botão; sem reason: a conexão caiu.
+// reason 'bye': saiu pelo botão; 'kicked': retirado por moderador (o aviso já
+// saiu); sem reason: a conexão caiu.
 function removeMember(id, reason) {
   const m = state.members.get(id);
   if (!m) return;
@@ -825,7 +881,7 @@ function removeMember(id, reason) {
   // Host inalcançável por mim não quer dizer que saiu: os outros ainda o veem.
   if (id === state.hostId && reason !== 'unreachable') handleHostLeft();
   // Nunca chegou a conectar: fantasma some quieto; gente de verdade, um aviso.
-  if (reason === 'gone') return;
+  if (reason === 'gone' || reason === 'kicked') return;
   if (reason === 'unreachable') {
     addSystem(`Não deu pra conectar com ${m.name} (a rede de um de vocês bloqueou).`);
     return;
@@ -872,8 +928,9 @@ function addChat(authorId, name, avatar, rawText) {
     body.append(who);
   }
   const p = document.createElement('p');
-  p.textContent = text;
+  linkifyInto(p, text); // links clicáveis, em links.js
   body.append(p);
+  addLinkCards(body, text);
   msg.append(av, body);
   appendTimeline(msg);
   state.lastChat = { author: authorId, time: now };
@@ -1798,6 +1855,7 @@ function watchedIds() {
 
 function watch(id) {
   if (!state.screens.has(id)) return;
+  closeEmbed();
   if (!state.tuned.has(id)) tune(id);
   if (state.watchingAlso === id) state.watchingAlso = null;
   state.watching = id;
@@ -2099,6 +2157,10 @@ function setMuted(muted) {
 }
 
 function toggleMute() {
+  if (roles.modMuted && state.muted && !state.deaf) {
+    addSystem('Você está mutado por um moderador. Só o host ou o criador da sala pode desmutar.');
+    return;
+  }
   // Mexer no mic estando surdo volta a ouvir e abre o mic, igual Discord.
   if (state.deaf) {
     state.mutedBeforeDeaf = false;
@@ -2116,7 +2178,7 @@ function toggleDeaf() {
     state.mutedBeforeDeaf = state.muted;
     setMuted(true);
   } else {
-    setMuted(state.mutedBeforeDeaf);
+    setMuted(state.mutedBeforeDeaf || roles.modMuted);
   }
   for (const m of state.members.values()) applyMemberAudio(m);
   for (const s of state.screens.values()) applyScreenAudio(s);
@@ -2269,7 +2331,7 @@ function setPersonPref(name, patch) {
 function applyMemberAudio(m) {
   const p = personPref(m.name);
   m.audio.volume = p.vol;
-  m.audio.muted = state.deaf || p.mute;
+  m.audio.muted = state.deaf || p.mute || isModMuted(m);
 }
 
 let personMenuFor = null;
@@ -2282,6 +2344,7 @@ function openPersonMenu(member, seat) {
   $('pm-vol').value = String(Math.round(p.vol * 100));
   $('pm-vol-val').textContent = `${Math.round(p.vol * 100)}%`;
   $('pm-mute').textContent = p.mute ? '🔊 Voltar a ouvir' : '🔇 Silenciar pra mim';
+  renderModMenu(member);
   const menu = $('person-menu');
   menu.hidden = false;
   const r = seat.getBoundingClientRect();
@@ -2552,7 +2615,7 @@ function createSeat(member) {
   return seat;
 }
 
-function fillSeat(seat, { id, name, avatar, muted, deaf, sharing, self, silenced }) {
+function fillSeat(seat, { id, name, avatar, muted, deaf, sharing, self, silenced, modMuted, creator, host }) {
   const key = JSON.stringify(avatar);
   if (seat.dataset.avatar !== key) {
     seat.dataset.avatar = key;
@@ -2569,7 +2632,10 @@ function fillSeat(seat, { id, name, avatar, muted, deaf, sharing, self, silenced
     if (onClick) el.addEventListener('click', onClick);
     badges.push(el);
   };
-  if (deaf) badge('deaf', 'SURDO');
+  if (creator) badge('creator', '👑 CRIADOR');
+  if (host) badge('host', '★ HOST');
+  if (modMuted) badge('muted', 'MUTADO P/ TODOS');
+  else if (deaf) badge('deaf', 'SURDO');
   else if (muted) badge('muted', 'MUDO');
   if (silenced) badge('silenced', 'SILENCIADO P/ MIM');
   seat.querySelector('.badges').replaceChildren(...badges);
@@ -2579,6 +2645,7 @@ function renderSeat(m) {
   fillSeat(m.seat, {
     id: m.id, name: m.name, avatar: m.avatar,
     muted: m.muted, deaf: m.deaf, sharing: state.screens.has(m.id), silenced: personPref(m.name).mute,
+    modMuted: isModMuted(m), creator: isCreator(m.id), host: isHost(m.id),
   });
   // Nome e rosto podem chegar depois da transmissão: atualiza o card dela.
   const card = state.screens.get(m.id)?.card;
@@ -2592,7 +2659,8 @@ function renderSelf() {
   if (!state.selfSeat) return;
   fillSeat(state.selfSeat, {
     id: state.myId, name: state.name, avatar: state.avatar,
-    muted: state.muted, deaf: state.deaf, sharing: !!state.screen, self: true,
+    muted: state.muted, deaf: state.deaf, sharing: !!state.screen, self: true, modMuted: roles.modMuted,
+    creator: isCreator(state.myId), host: isHost(state.myId),
   });
 }
 
@@ -2899,6 +2967,7 @@ function loadRooms() {
         code: r.code,
         name: String(r.name || r.code).slice(0, SAVED_NAME_MAX),
         theme: THEMES[r.theme] ? r.theme : undefined,
+        creator: typeof r.creator === 'string' && r.creator.length <= 100 ? r.creator : undefined,
       }));
   } catch {
     return [];
@@ -2925,6 +2994,16 @@ function rememberRoomTheme() {
   const room = list.find((r) => r.code === state.room);
   if (!room) return;
   room.theme = state.theme;
+  storeRooms(list);
+}
+
+// Sala salva guarda quem a criou (a primeira chave que viu): da próxima vez
+// que alguém daqui abrir a sala, o criador continua o mesmo.
+function rememberRoomCreator() {
+  const list = loadRooms();
+  const room = list.find((r) => r.code === state.room);
+  if (!room || room.creator || !roles.creatorKey) return;
+  room.creator = roles.creatorKey;
   storeRooms(list);
 }
 
@@ -2987,8 +3066,10 @@ function openSaveDialog() {
 function confirmSaveRoom(e) {
   e.preventDefault();
   const name = $('save-name').value.trim().slice(0, SAVED_NAME_MAX) || state.room;
-  const list = loadRooms().filter((r) => r.code !== state.room);
-  list.unshift({ code: state.room, name, theme: state.theme });
+  const rooms = loadRooms();
+  const creator = rooms.find((r) => r.code === state.room)?.creator || roles.creatorKey || undefined;
+  const list = rooms.filter((r) => r.code !== state.room);
+  list.unshift({ code: state.room, name, theme: state.theme, creator });
   storeRooms(list);
   $('save-dialog').close();
   updateSaveChip();
