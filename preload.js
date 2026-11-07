@@ -23,7 +23,7 @@ contextBridge.exposeInMainWorld('baderna', {
   stopMusicAudio: () => ipcRenderer.invoke('music-audio:stop'),
   onMusicAudioData: (cb) => subscribe('music-audio:data', cb),
   onMusicAudioError: (cb) => subscribe('music-audio:error', cb),
-  musicTitle: (sourceId) => ipcRenderer.invoke('music:title', sourceId),
+  onMusicTitle: (cb) => subscribe('music-audio:title', cb),
   searchMovies: (query) => ipcRenderer.invoke('movies:search', query),
   linkPreview: (url) => ipcRenderer.invoke('link:preview', url),
   openExternal: (url) => ipcRenderer.send('link:open', url),

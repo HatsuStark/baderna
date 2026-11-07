@@ -7,6 +7,8 @@
 //   proc-audio.exe window  <hwnd>   como include, usando o dono da janela
 //
 // Saída: PCM 16-bit, 48 kHz, estéreo intercalado em stdout.
+// Modo window: escreve "title:<título da janela em UTF-8>" em stderr quando
+// muda (rádio da sala mostra a música) e sai com código 4 se a janela fechar.
 // Termina quando stdin fecha (processo pai morreu) ou stdout quebra.
 
 #include <windows.h>
@@ -20,6 +22,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cwchar>
+#include <string>
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
@@ -29,7 +32,10 @@ namespace {
 constexpr DWORD kSampleRate = 48000;
 constexpr WORD kChannels = 2;
 constexpr WORD kBits = 16;
-constexpr REFERENCE_TIME kBufferDuration = 200000;  // 20 ms em unidades de 100 ns
+// 200 ms (unidades de 100 ns). Folga pra quando o stdout demora a ser lido:
+// com buffer curto o Windows descarta áudio na origem e o som engasga.
+constexpr REFERENCE_TIME kBufferDuration = 2000000;
+constexpr ULONGLONG kTitleEveryMs = 1000;
 
 std::atomic<bool> g_stop{false};
 
@@ -66,6 +72,25 @@ DWORD WINAPI WatchStdin(LPVOID) {
   return 0;
 }
 
+// Manda o título da janela pro stderr se mudou. false = a janela fechou.
+bool ReportTitle(HWND hwnd, std::wstring& last) {
+  if (!IsWindow(hwnd)) return false;
+  wchar_t buf[512];
+  const int n = GetWindowTextW(hwnd, buf, 512);
+  std::wstring title(buf, n > 0 ? n : 0);
+  for (auto& ch : title) {
+    if (ch == L'\r' || ch == L'\n') ch = L' ';
+  }
+  if (title == last) return true;
+  last = title;
+  const int bytes = WideCharToMultiByte(CP_UTF8, 0, title.c_str(), static_cast<int>(title.size()), nullptr, 0, nullptr, nullptr);
+  std::string utf8(bytes > 0 ? bytes : 0, '\0');
+  if (bytes > 0) WideCharToMultiByte(CP_UTF8, 0, title.c_str(), static_cast<int>(title.size()), utf8.data(), bytes, nullptr, nullptr);
+  fprintf(stderr, "title:%s\n", utf8.c_str());
+  fflush(stderr);
+  return true;
+}
+
 int Fail(const char* what, HRESULT hr) {
   fprintf(stderr, "%s falhou: 0x%08lx\n", what, static_cast<unsigned long>(hr));
   return 1;
@@ -82,13 +107,15 @@ int wmain(int argc, wchar_t** argv) {
   const unsigned long long value = wcstoull(argv[2], nullptr, 10);
   PROCESS_LOOPBACK_MODE mode = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
   DWORD pid = 0;
+  HWND hwnd = nullptr;
   if (!wcscmp(argv[1], L"include")) {
     pid = static_cast<DWORD>(value);
   } else if (!wcscmp(argv[1], L"exclude")) {
     pid = static_cast<DWORD>(value);
     mode = PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE;
   } else if (!wcscmp(argv[1], L"window")) {
-    GetWindowThreadProcessId(reinterpret_cast<HWND>(static_cast<uintptr_t>(value)), &pid);
+    hwnd = reinterpret_cast<HWND>(static_cast<uintptr_t>(value));
+    GetWindowThreadProcessId(hwnd, &pid);
   } else {
     fprintf(stderr, "modo inválido\n");
     return 2;
@@ -152,7 +179,18 @@ int wmain(int argc, wchar_t** argv) {
 
   HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
   std::vector<BYTE> silence;
+  std::wstring lastTitle;
+  ULONGLONG nextTitle = 0;
+  int exitCode = 0;
   while (!g_stop) {
+    if (hwnd && GetTickCount64() >= nextTitle) {
+      nextTitle = GetTickCount64() + kTitleEveryMs;
+      if (!ReportTitle(hwnd, lastTitle)) {
+        fprintf(stderr, "a janela do app fechou\n");
+        exitCode = 4;
+        break;
+      }
+    }
     // Sem nada tocando não chegam pacotes; o timeout só serve pra checar g_stop.
     if (WaitForSingleObject(ready, 100) != WAIT_OBJECT_0) continue;
     UINT32 packet = 0;
@@ -177,5 +215,5 @@ int wmain(int argc, wchar_t** argv) {
   client->Stop();
   CloseHandle(ready);
   CoUninitialize();
-  return 0;
+  return exitCode;
 }

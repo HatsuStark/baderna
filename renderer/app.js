@@ -1192,7 +1192,9 @@ function startScreenAudio(sourceId) {
   });
 }
 
-async function startPcmCapture(sourceId, { start, stop, onData, onError, failed }) {
+// buffer: folga do worklet em segundos { prebuffer, target, max } (pcm-worklet.js).
+// stats: buraco no som (buffer secou) e descartes, somados desde o início.
+async function startPcmCapture(sourceId, { start, stop, onData, onError, failed, buffer }) {
   const res = await start(sourceId);
   if (!res.ok) throw new Error(res.error);
 
@@ -1205,7 +1207,14 @@ async function startPcmCapture(sourceId, { start, stop, onData, onError, failed 
     ctx.close();
     throw err;
   }
-  const player = new AudioWorkletNode(ctx, 'pcm-player', { numberOfInputs: 0, outputChannelCount: [2] });
+  const player = new AudioWorkletNode(ctx, 'pcm-player', {
+    numberOfInputs: 0, outputChannelCount: [2], processorOptions: buffer ?? {},
+  });
+  const stats = { under: 0, drops: 0 };
+  player.port.onmessage = (e) => {
+    stats.under += e.data?.under ?? 0;
+    stats.drops += e.data?.drops ?? 0;
+  };
   const dest = ctx.createMediaStreamDestination();
   player.connect(dest);
 
@@ -1219,6 +1228,7 @@ async function startPcmCapture(sourceId, { start, stop, onData, onError, failed 
   track.contentHint = 'music';
   return {
     track,
+    stats,
     stop() {
       offs.forEach((off) => off());
       stop();

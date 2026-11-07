@@ -502,15 +502,28 @@ function startCapture(kind, event, sourceId) {
     if (usable && !wc.isDestroyed()) wc.send(`${channel}:data`, data.subarray(0, usable));
   });
 
-  let stderr = '';
-  proc.stderr.on('data', (d) => { stderr += d; });
+  // stderr linha a linha: "title:..." é o título da janela (rádio); o resto
+  // é diagnóstico, e a última linha vira a mensagem de erro se o processo cair.
+  let partial = '';
+  let lastLine = '';
+  proc.stderr.setEncoding('utf8');
+  proc.stderr.on('data', (d) => {
+    const lines = (partial + d).split('\n');
+    partial = lines.pop().slice(-4096);
+    for (const raw of lines) {
+      const line = raw.replace(/\r$/, '');
+      if (line.startsWith('title:')) {
+        if (kind === 'music' && !wc.isDestroyed()) wc.send('music-audio:title', line.slice(6, 6 + 300));
+      } else if (line.trim()) lastLine = line.slice(0, 300);
+    }
+  });
   const report = (msg) => {
     if (!wc.isDestroyed()) wc.send(`${channel}:error`, msg);
   };
   proc.on('error', (err) => report(err.message));
   proc.on('exit', (code) => {
     if (audioProcs.get(kind) === proc) audioProcs.delete(kind);
-    if (code) report(stderr.trim().split('\n').pop() || `código ${code}`);
+    if (code) report((partial.trim() || lastLine).trim() || `código ${code}`);
   });
   return { ok: true };
 }
@@ -519,13 +532,6 @@ ipcMain.handle('screen-audio:start', (event, sourceId) => startCapture('screen',
 ipcMain.handle('screen-audio:stop', () => stopCapture('screen'));
 ipcMain.handle('music-audio:start', (event, sourceId) => startCapture('music', event, sourceId));
 ipcMain.handle('music-audio:stop', () => stopCapture('music'));
-
-// Título atual da janela do app de música (Spotify mostra "Artista - Música").
-ipcMain.handle('music:title', async (_e, sourceId) => {
-  if (typeof sourceId !== 'string') return '';
-  const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } }).catch(() => []);
-  return sources.find((s) => s.id === sourceId)?.name ?? '';
-});
 
 app.on('before-quit', () => {
   quitting = true;

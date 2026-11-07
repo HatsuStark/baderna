@@ -13,8 +13,11 @@
 // Chamada: metadata.kind 'radio'. Só aceito a do DJ atual, e só se sintonizei.
 // Rádio para (DJ saiu ou parou): ninguém fica sintonizado.
 
-const RADIO_TITLE_POLL_MS = 4000;
 const RADIO_TITLE_MAX = 120;
+// Folga do áudio do DJ (pcm-worklet.js). Sem vídeo pra casar, dá pra guardar
+// bem mais que na tela: engasgo da thread ou do IPC não vira buraco no som.
+const RADIO_BUFFER = { prebuffer: 0.15, target: 0.2, max: 0.6 };
+const RADIO_STATS_LOG_MS = 60_000;
 const RADIO_DUCK_LEVEL = 0.3;   // volume enquanto alguém fala
 const RADIO_DUCK_DOWN_MS = 120; // abaixa rápido
 const RADIO_DUCK_UP_MS = 700;   // volta devagar
@@ -94,6 +97,7 @@ async function openRadioPicker() {
 async function startRadio(sourceId) {
   if (radio.dj && !isDj(state.myId)) return addSystem('Já tem DJ na sala.');
   const b = window.baderna;
+  radio.lastRawTitle = '';
   let capture;
   try {
     capture = await startPcmCapture(sourceId, {
@@ -102,6 +106,7 @@ async function startRadio(sourceId) {
         addSystem(`A rádio parou: ${msg}`);
         stopRadio();
       },
+      buffer: RADIO_BUFFER,
     });
   } catch (err) {
     console.error(err);
@@ -115,12 +120,20 @@ async function startRadio(sourceId) {
   const old = radio.mine;
   const stream = old?.stream ?? new MediaStream();
   if (old) {
-    clearInterval(old.timer);
-    old.capture.stop();
+    stopRadioCapture(old);
     stream.getTracks().forEach((t) => stream.removeTrack(t));
   }
   stream.addTrack(capture.track);
-  radio.mine = { capture, stream, sourceId, timer: setInterval(pollRadioTitle, RADIO_TITLE_POLL_MS) };
+  const logged = { under: 0, drops: 0 };
+  // Buraco no som do DJ vai pro baderna.log (diagnóstico de "a rádio engasga").
+  const statsTimer = setInterval(() => {
+    const { under, drops } = capture.stats;
+    if (under === logged.under && drops === logged.drops) return;
+    logEvent('rádio: buffer secou', under - logged.under, 'descartou', drops - logged.drops, 'no último minuto');
+    Object.assign(logged, capture.stats);
+  }, RADIO_STATS_LOG_MS);
+  radio.mine = { capture, stream, sourceId, statsTimer };
+  setRadioTitle(radio.lastRawTitle);
   if (old) {
     for (const m of state.members.values()) {
       m.radioOut?.peerConnection?.getSenders().forEach((s) => s.track?.kind === 'audio' && s.replaceTrack(capture.track));
@@ -134,7 +147,6 @@ async function startRadio(sourceId) {
     logEvent('rádio: virei DJ');
     renderSelf();
   }
-  await pollRadioTitle();
   announceRadio();
   for (const id of radio.listeners) {
     const m = state.members.get(id);
@@ -148,16 +160,9 @@ function announceRadio() {
   broadcast({ type: 'radio', on: true, title: radio.title, since: radio.since });
 }
 
-async function pollRadioTitle() {
-  const mine = radio.mine;
-  if (!mine) return;
-  const raw = await window.baderna.musicTitle(mine.sourceId).catch(() => null);
-  if (radio.mine !== mine) return;
-  // Janela sumiu: app fechado.
-  if (raw === '') {
-    addSystem('A janela do app de música fechou: a rádio parou.');
-    return stopRadio();
-  }
+// Janela fechada chega como erro do proc-audio ("a janela do app fechou").
+function setRadioTitle(raw) {
+  if (!radio.mine) return;
   const title = cleanRadioTitle(raw);
   if (title === radio.title) return;
   radio.title = title;
@@ -165,12 +170,16 @@ async function pollRadioTitle() {
   renderRadio();
 }
 
+function stopRadioCapture(mine) {
+  clearInterval(mine.statsTimer);
+  mine.capture.stop();
+}
+
 function stopRadio({ silent = false } = {}) {
   const mine = radio.mine;
   if (!mine) return;
   radio.mine = null;
-  clearInterval(mine.timer);
-  mine.capture.stop();
+  stopRadioCapture(mine);
   for (const m of state.members.values()) closeRadioTo(m);
   if (state.mainPeer) broadcast({ type: 'radio', on: false });
   logEvent('rádio: parei');
@@ -391,6 +400,13 @@ function radioBoxClick() {
   if (!radio.dj || isDj(state.myId)) return openRadioPicker();
   tuneRadio(!radio.tuned);
 }
+
+// Título chega do proc-audio quando muda, e logo ao ligar (às vezes antes de
+// startRadio terminar): guarda o último pra aplicar quando a rádio subir.
+window.baderna?.onMusicTitle?.((raw) => {
+  radio.lastRawTitle = typeof raw === 'string' ? raw : '';
+  setRadioTitle(radio.lastRawTitle);
+});
 
 $('radio-box').addEventListener('click', radioBoxClick);
 $('radio-toggle').addEventListener('click', () => {
