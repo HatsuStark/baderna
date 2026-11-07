@@ -318,6 +318,7 @@ async function leave() {
 }
 
 async function teardown() {
+  resetRadio(); // antes de marcar saída: ainda avisa que a rádio parou
   state.leaving = true;
   for (const w of watchedPaths) await pollPath(w);
   logRelaySummary(true);
@@ -449,6 +450,10 @@ function wireMainPeer() {
 
   peer.on('call', (call) => {
     const member = upsertMember(call.peer, {});
+    if (call.metadata?.kind === 'radio') {
+      answerRadioCall(call); // radio.js
+      return;
+    }
     if (call.metadata?.kind === 'screen') {
       // Repasse do ajudante (relay.js): a tela é de quem transmite, não de quem ligou.
       const relayOf = call.metadata.relayOf;
@@ -608,6 +613,7 @@ function attachConn(member, conn) {
     watchIce(member, conn.peerConnection);
     conn.send(myProfile());
     sendMoviesTo(member);
+    radioConnOpen(member, conn);
     conn.send({ type: 'watching', ids: [...state.tuned] });
     conn.send({ type: 'caps', ondemand: true, sounds: true, relay: true });
     if (state.screen) {
@@ -870,6 +876,10 @@ function handleMessage(member, msg) {
     case 'knock-done':
       handleKnockMessage(member, msg);
       break;
+    case 'radio':
+    case 'radio-tune':
+      handleRadioMessage(member, msg);
+      break;
     case 'bye':
       removeMember(member.id, 'bye');
       break;
@@ -895,6 +905,7 @@ function removeMember(id, reason) {
   logEvent('saiu da lista', m.name, shortId(id), reason ?? 'caiu');
   if (state.leaving) return;
   relayMemberGone(id, m.name);
+  radioMemberGone(m);
   if (personMenuFor === m) closePersonMenu();
   updateLiveRail();
   renderSoundPanel();
@@ -1173,8 +1184,16 @@ async function shareSource(sourceId) {
 }
 
 // Liga o proc-audio.exe e transforma o PCM dele numa MediaStreamTrack.
-async function startScreenAudio(sourceId) {
-  const res = await window.baderna.startScreenAudio(sourceId);
+function startScreenAudio(sourceId) {
+  const b = window.baderna;
+  return startPcmCapture(sourceId, {
+    start: b.startScreenAudio, stop: b.stopScreenAudio, onData: b.onScreenAudioData, onError: b.onScreenAudioError,
+    failed: (msg) => addSystem(`Áudio da tela parou: ${msg}`),
+  });
+}
+
+async function startPcmCapture(sourceId, { start, stop, onData, onError, failed }) {
+  const res = await start(sourceId);
   if (!res.ok) throw new Error(res.error);
 
   const ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
@@ -1182,7 +1201,7 @@ async function startScreenAudio(sourceId) {
   try {
     await ctx.audioWorklet.addModule('pcm-worklet.js');
   } catch (err) {
-    window.baderna.stopScreenAudio();
+    stop();
     ctx.close();
     throw err;
   }
@@ -1190,11 +1209,11 @@ async function startScreenAudio(sourceId) {
   const dest = ctx.createMediaStreamDestination();
   player.connect(dest);
 
-  offs.push(window.baderna.onScreenAudioData((bytes) => {
+  offs.push(onData((bytes) => {
     const pcm = new Int16Array(bytes.slice().buffer);
     player.port.postMessage(pcm, [pcm.buffer]);
   }));
-  offs.push(window.baderna.onScreenAudioError((msg) => addSystem(`Áudio da tela parou: ${msg}`)));
+  offs.push(onError(failed));
 
   const track = dest.stream.getAudioTracks()[0];
   track.contentHint = 'music';
@@ -1202,7 +1221,7 @@ async function startScreenAudio(sourceId) {
     track,
     stop() {
       offs.forEach((off) => off());
-      window.baderna.stopScreenAudio();
+      stop();
       track.stop();
       ctx.close().catch(() => {});
     },
@@ -2211,6 +2230,7 @@ function toggleDeaf() {
   }
   for (const m of state.members.values()) applyMemberAudio(m);
   for (const s of state.screens.values()) applyScreenAudio(s);
+  applyRadioVolume();
   broadcast(myProfile());
   updateDock();
   renderSelf();
@@ -2496,6 +2516,7 @@ function tick() {
   if (now - (state.lastTick || 0) < TICK_MS - 2) return;
   const dt = Math.min(200, now - (state.lastTick || now));
   state.lastTick = now;
+  let othersSpeaking = false;
   for (const [id, meter] of state.meters) {
     meter.analyser.getFloatTimeDomainData(meter.buf);
     let sum = 0;
@@ -2508,12 +2529,14 @@ function tick() {
     const seat = id === state.myId ? state.selfSeat : state.members.get(id)?.seat;
     if (speaking && state.mainPeer) statOf(id === state.myId ? state.name : state.members.get(id)?.name ?? '…').talk += dt;
     if (speaking) meter.lastSpoke = now;
+    if (speaking && id !== state.myId) othersSpeaking = true;
     if (state.windowHidden) continue; // minimizado/na bandeja: só conta, não desenha
     seat?.classList.toggle('speaking', speaking);
     seat?.classList.toggle('recent', now - (meter.lastSpoke ?? -Infinity) < RECENT_TALK_MS);
     seat?.classList.toggle('loud', now - meter.lastLoud < MOUTH_HOLD_MS);
     if (seat) swayHead(seat, meter, speaking, now, dt);
   }
+  radioDuckTick(othersSpeaking, dt);
   if ($('settings-dialog').open) {
     const mine = state.meters.get(state.myId);
     if (mine) showMicLevel(mine.level);
@@ -2645,10 +2668,12 @@ function createSeat(member) {
 }
 
 function fillSeat(seat, { id, name, avatar, muted, deaf, sharing, self, silenced, modMuted, creator, host, helping }) {
-  const key = JSON.stringify(avatar) + (helping ? ':ajudando' : '');
+  // radio.js: fone de DJ ou de ouvinte. Lobby é desenhado antes do radio.js carregar.
+  const phones = id === 'lobby' ? null : radioPhones(id);
+  const key = JSON.stringify(avatar) + (helping ? ':ajudando' : '') + (phones ? `:fone-${phones}` : '');
   if (seat.dataset.avatar !== key) {
     seat.dataset.avatar = key;
-    seat.querySelector('.figure').innerHTML = avatarSeatSvg(avatar, { helping }); // sanitizado em avatar.js
+    seat.querySelector('.figure').innerHTML = avatarSeatSvg(avatar, { helping, phones }); // sanitizado em avatar.js
   }
   seat.dataset.id = id;
   seat.classList.toggle('self', !!self);
@@ -2668,6 +2693,7 @@ function fillSeat(seat, { id, name, avatar, muted, deaf, sharing, self, silenced
   else if (muted) badge('muted', 'MUDO');
   if (silenced) badge('silenced', 'SILENCIADO P/ MIM');
   if (helping) badge('helping', '🙌 DOANDO UPLOAD');
+  if (phones === 'dj') badge('dj', '🎧 DJ');
   seat.querySelector('.badges').replaceChildren(...badges);
 }
 
@@ -3166,6 +3192,7 @@ $('speaker').addEventListener('change', () => {
   savePref('speakerId', $('speaker').value);
   for (const m of state.members.values()) applySink(m.audio);
   for (const s of state.screens.values()) if (s.audio) applySink(s.audio);
+  applySink(radio.audio);
   applyCtxSink();
 });
 navigator.mediaDevices.addEventListener('devicechange', () => populateDevices().catch(console.warn));

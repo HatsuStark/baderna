@@ -8,10 +8,17 @@
 // Mensagem no DataChannel: { type: 'movies', list } — a lista inteira quando
 // a conexão abre, um filme só quando alguém mexe. Tudo validado em
 // sanitizeMovie; texto sempre via textContent.
+//
+// Notas (1 a 10): ratings = { nome: { v, at } }, v 0 = nota retirada. Juntam
+// pessoa por pessoa pela hora de cada uma, separado do resto do filme: duas
+// pessoas votando ao mesmo tempo não apagam a nota uma da outra. Só vale (e só
+// entra na média) a nota de quem está em "quem assistiu".
 
 const MOVIES_MAX = 400;
 const MOVIE_TITLE_MAX = 100;
 const MOVIE_WHO_MAX = 16;
+const MOVIE_RATINGS_MAX = 32;
+const RATING_MAX = 10;
 const MOVIE_SEARCH_DELAY_MS = 450;
 const POSTER_BASE = 'https://image.tmdb.org/t/p/';
 const MOVIE_POSTER_RE = /^\/[A-Za-z0-9_-]{4,64}\.(jpg|jpeg|png)$/;
@@ -23,6 +30,8 @@ const movies = {
   searchTimer: 0,
   searchToken: 0,
   confirmDelete: false,
+  myRating: 0,       // nota no formulário aberto (0 = sem nota)
+  sort: loadPref('moviesSort') === 'rank' ? 'rank' : 'recent',
 };
 
 // ---------- Dados ----------
@@ -48,7 +57,48 @@ function sanitizeMovie(raw) {
     date: typeof raw.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.date) ? raw.date : '',
     who,
     by: cleanName(raw.by),
+    ratings: sanitizeRatings(raw.ratings),
   };
+}
+
+function sanitizeRatings(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [key, r] of Object.entries(raw).slice(0, MOVIE_RATINGS_MAX)) {
+    const name = cleanName(key);
+    const v = Number(r?.v);
+    const at = Number(r?.at);
+    if (name === '?' || !Number.isInteger(v) || v < 0 || v > RATING_MAX || !Number.isFinite(at) || at <= 0) continue;
+    out[name] = { v, at: Math.min(at, Date.now() + 86_400_000) };
+  }
+  return out;
+}
+
+// Junta duas listas de notas: por pessoa, vale a mais nova.
+function mergeRatings(a = {}, b = {}) {
+  const out = { ...a };
+  for (const [name, r] of Object.entries(b)) {
+    if ((out[name]?.at ?? 0) < r.at) out[name] = r;
+  }
+  return out;
+}
+
+function sameRatings(a = {}, b = {}) {
+  const ka = Object.keys(a);
+  return ka.length === Object.keys(b).length && ka.every((k) => b[k]?.at === a[k].at && b[k].v === a[k].v);
+}
+
+// Média só de quem viu e deu nota.
+function movieScore(m) {
+  const votes = m.who.map((n) => m.ratings?.[n]?.v).filter((v) => v > 0);
+  if (!votes.length) return null;
+  return { avg: votes.reduce((s, v) => s + v, 0) / votes.length, count: votes.length };
+}
+
+const formatScore = (avg) => avg.toFixed(1).replace('.', ',');
+
+function myMovieName() {
+  return cleanName(state.name ?? loadPref('name'));
 }
 
 function loadMovies(room) {
@@ -73,8 +123,13 @@ function mergeMovies(room, incoming) {
   let changed = false;
   for (const raw of incoming.slice(0, MOVIES_MAX)) {
     const m = sanitizeMovie(raw);
-    if (!m || (byId.get(m.id)?.at ?? 0) >= m.at) continue;
-    byId.set(m.id, m);
+    if (!m) continue;
+    const cur = byId.get(m.id);
+    const base = !cur || m.at > cur.at ? m : cur;
+    // Removido não guarda nota; o resto junta as notas dos dois lados.
+    const next = base.del ? base : { ...base, ratings: mergeRatings(cur?.ratings, m.ratings) };
+    if (next === cur || (cur && base === cur && !cur.del && sameRatings(cur.ratings, next.ratings))) continue;
+    byId.set(m.id, next);
     changed = true;
   }
   if (changed) storeMovies(room, [...byId.values()]);
@@ -137,16 +192,40 @@ function showMoviesList() {
   renderMoviesGrid();
 }
 
+// Ranking: maior média primeiro; empate, quem tem mais notas; sem nota no fim.
+function rankedMovies(list) {
+  const scored = list.map((m) => ({ m, s: movieScore(m) }));
+  scored.sort((a, b) => (!a.s - !b.s) || (b.s?.avg ?? 0) - (a.s?.avg ?? 0) || (b.s?.count ?? 0) - (a.s?.count ?? 0));
+  return scored.map(({ m }) => m);
+}
+
+function setMoviesSort(sort) {
+  movies.sort = sort;
+  savePref('moviesSort', sort);
+  $('movies-sort-recent').classList.toggle('on', sort !== 'rank');
+  $('movies-sort-rank').classList.toggle('on', sort === 'rank');
+  if (movies.room) renderMoviesGrid();
+}
+
 function renderMoviesGrid() {
-  const list = visibleMovies(movies.room);
+  const ranking = movies.sort === 'rank';
+  const list = ranking ? rankedMovies(visibleMovies(movies.room)) : visibleMovies(movies.room);
   $('movies-sub').textContent = list.length
-    ? `${list.length} ${list.length === 1 ? 'filme visto' : 'filmes vistos'}. Clique num filme pra editar.`
+    ? `${list.length} ${list.length === 1 ? 'filme visto' : 'filmes vistos'}. Clique num filme pra editar ou dar nota.`
     : 'Nenhum filme ainda. Viram algum? Clica em "+ Filme".';
+  let pos = 0;
   $('movies-grid').replaceChildren(...list.map((m) => {
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'movie-card';
     card.title = 'Editar';
+    if (ranking && movieScore(m)) {
+      pos++;
+      const place = document.createElement('span');
+      place.className = `movie-place p${Math.min(pos, 4)}`;
+      place.textContent = `#${pos}`;
+      card.append(place);
+    }
     const title = document.createElement('b');
     title.textContent = m.title;
     const meta = document.createElement('small');
@@ -154,7 +233,18 @@ function renderMoviesGrid() {
     const who = document.createElement('span');
     who.className = 'movie-who';
     who.textContent = m.who.join(', ');
-    card.append(moviePoster(m.title, m.poster, 'w342'), title, meta, who);
+    const score = movieScore(m);
+    const rating = document.createElement('span');
+    rating.className = 'movie-score';
+    if (score) {
+      const num = document.createElement('b');
+      num.textContent = formatScore(score.avg);
+      rating.append('★ ', num, `/10 · ${score.count} ${score.count === 1 ? 'nota' : 'notas'}`);
+    } else {
+      rating.classList.add('none');
+      rating.textContent = '☆ sem nota';
+    }
+    card.append(moviePoster(m.title, m.poster, 'w342'), title, meta, rating, who);
     card.addEventListener('click', () => openMovieForm(m));
     return card;
   }));
@@ -227,7 +317,66 @@ function openMovieForm(movie = null) {
     label.append(box, document.createTextNode(name));
     return label;
   }));
+  movies.myRating = movie?.ratings?.[myMovieName()]?.v ?? 0;
+  renderRating();
   $('movie-search').focus();
+}
+
+// ---------- Nota (1 a 10 estrelas) ----------
+
+function iWatched() {
+  const me = myMovieName();
+  const extra = $('movie-who-extra').value.split(',').map(cleanName);
+  return [...$('movie-who').querySelectorAll('input:checked')].some((b) => b.value === me) || extra.includes(me);
+}
+
+function renderRating(preview = 0) {
+  const can = iWatched();
+  const shown = can ? preview || movies.myRating : 0;
+  const stars = $('movie-stars');
+  if (!stars.children.length) {
+    for (let i = 1; i <= RATING_MAX; i++) {
+      const star = document.createElement('button');
+      star.type = 'button';
+      star.className = 'star';
+      star.textContent = '★';
+      star.title = `${i}/10`;
+      star.dataset.v = String(i);
+      stars.append(star);
+    }
+  }
+  stars.classList.toggle('locked', !can);
+  for (const star of stars.children) {
+    star.disabled = !can;
+    star.classList.toggle('on', Number(star.dataset.v) <= shown);
+  }
+  $('movie-rating-value').textContent = can
+    ? (shown ? `${shown}/10` : 'clique nas estrelas')
+    : 'só quem assistiu dá nota: marque seu nome acima';
+
+  // Notas dos outros que viram (do filme salvo).
+  const m = movies.editing;
+  const me = myMovieName();
+  const others = m ? m.who.filter((n) => n !== me && m.ratings?.[n]?.v > 0).map((n) => `${n} ${m.ratings[n].v}`) : [];
+  const score = m && movieScore(m);
+  $('movie-rating-others').textContent = [
+    score && `Média ${formatScore(score.avg)}/10 (${score.count} ${score.count === 1 ? 'nota' : 'notas'})`,
+    others.length && `Galera: ${others.join(' · ')}`,
+  ].filter(Boolean).join('. ');
+}
+
+function clickStar(e) {
+  const star = e.target.closest('.star');
+  if (!star || star.disabled) return;
+  const v = Number(star.dataset.v);
+  // Clicar na nota que já está tira a nota.
+  movies.myRating = movies.myRating === v ? 0 : v;
+  renderRating();
+}
+
+function hoverStar(e) {
+  const star = e.target.closest('.star');
+  renderRating(star && !star.disabled ? Number(star.dataset.v) : 0);
 }
 
 function scheduleMovieSearch() {
@@ -296,6 +445,10 @@ function saveMovieForm(e) {
   const p = movies.picked?.title === title ? movies.picked : null;
   const extra = $('movie-who-extra').value.split(',').map((n) => n.trim()).filter(Boolean);
   const who = [...[...$('movie-who').querySelectorAll('input:checked')].map((b) => b.value), ...extra];
+  const ratings = { ...(movies.editing?.ratings ?? {}) };
+  const me = myMovieName();
+  const mine = iWatched() ? movies.myRating : 0;
+  if ((ratings[me]?.v ?? 0) !== mine) ratings[me] = { v: mine, at: Date.now() };
   publishMovie({
     id: movies.editing?.id ?? newMovieId(),
     at: Date.now(),
@@ -305,6 +458,7 @@ function saveMovieForm(e) {
     date: $('movie-date').value,
     who,
     by: state.name ?? loadPref('name'),
+    ratings,
   });
   showMoviesList();
 }
@@ -330,3 +484,12 @@ $('movie-search').addEventListener('input', scheduleMovieSearch);
 $('movie-form').addEventListener('submit', saveMovieForm);
 $('movie-cancel').addEventListener('click', showMoviesList);
 $('movie-delete').addEventListener('click', deleteMovie);
+$('movies-sort-recent').addEventListener('click', () => setMoviesSort('recent'));
+$('movies-sort-rank').addEventListener('click', () => setMoviesSort('rank'));
+setMoviesSort(movies.sort);
+$('movie-stars').addEventListener('click', clickStar);
+$('movie-stars').addEventListener('mouseover', hoverStar);
+$('movie-stars').addEventListener('mouseleave', () => renderRating());
+// Marcar/desmarcar o próprio nome libera ou trava as estrelas.
+$('movie-who').addEventListener('change', () => renderRating());
+$('movie-who-extra').addEventListener('input', () => renderRating());

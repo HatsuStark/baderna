@@ -463,57 +463,73 @@ ipcMain.handle('link:preview', (_e, url) => {
   return previewCache.get(p.key);
 });
 
-// ---------- Áudio da tela via proc-audio.exe ----------
+// ---------- Áudio da tela / rádio via proc-audio.exe ----------
 // Janela: captura só o processo dono (e filhos). Tela inteira: tudo menos a
-// Baderna, pra não mandar de volta a voz dos amigos.
+// Baderna, pra não mandar de volta a voz dos amigos. Um processo por canal
+// ('screen' = áudio da transmissão, 'music' = rádio da sala): dá pra
+// transmitir a tela e ser DJ ao mesmo tempo.
 
-let audioProc = null;
+const audioProcs = new Map(); // canal -> processo
 
-function stopScreenAudio() {
-  const proc = audioProc;
-  audioProc = null;
+function stopCapture(kind) {
+  const proc = audioProcs.get(kind);
+  audioProcs.delete(kind);
   if (!proc) return;
   proc.stdin.end();
   proc.kill();
 }
 
-ipcMain.handle('screen-audio:start', (event, sourceId) => {
-  stopScreenAudio();
-  if (process.platform !== 'win32') return { ok: false, error: 'Áudio da tela só funciona no Windows por enquanto.' };
+function startCapture(kind, event, sourceId) {
+  stopCapture(kind);
+  if (process.platform !== 'win32') return { ok: false, error: 'Captura de áudio só funciona no Windows por enquanto.' };
   if (!fs.existsSync(PROC_AUDIO)) return { ok: false, error: 'proc-audio.exe não encontrado (rode npm run build:native).' };
 
   const win = /^window:(\d+):/.exec(String(sourceId));
+  // Rádio só pega janela: a tela inteira levaria som do sistema todo.
+  if (kind === 'music' && !win) return { ok: false, error: 'Escolha a janela do app de música.' };
   const args = win ? ['window', win[1]] : ['exclude', String(process.pid)];
   const proc = spawn(PROC_AUDIO, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
-  audioProc = proc;
+  audioProcs.set(kind, proc);
 
   const wc = event.sender;
+  const channel = kind === 'music' ? 'music-audio' : 'screen-audio';
   let pending = Buffer.alloc(0);
   proc.stdout.on('data', (chunk) => {
     // Pipe entrega pedaços de qualquer tamanho; só repassa frames inteiros.
     const data = pending.length ? Buffer.concat([pending, chunk]) : chunk;
     const usable = data.length - (data.length % PCM_FRAME_BYTES);
     pending = data.subarray(usable);
-    if (usable && !wc.isDestroyed()) wc.send('screen-audio:data', data.subarray(0, usable));
+    if (usable && !wc.isDestroyed()) wc.send(`${channel}:data`, data.subarray(0, usable));
   });
 
   let stderr = '';
   proc.stderr.on('data', (d) => { stderr += d; });
   const report = (msg) => {
-    if (!wc.isDestroyed()) wc.send('screen-audio:error', msg);
+    if (!wc.isDestroyed()) wc.send(`${channel}:error`, msg);
   };
   proc.on('error', (err) => report(err.message));
   proc.on('exit', (code) => {
-    if (audioProc === proc) audioProc = null;
+    if (audioProcs.get(kind) === proc) audioProcs.delete(kind);
     if (code) report(stderr.trim().split('\n').pop() || `código ${code}`);
   });
   return { ok: true };
+}
+
+ipcMain.handle('screen-audio:start', (event, sourceId) => startCapture('screen', event, sourceId));
+ipcMain.handle('screen-audio:stop', () => stopCapture('screen'));
+ipcMain.handle('music-audio:start', (event, sourceId) => startCapture('music', event, sourceId));
+ipcMain.handle('music-audio:stop', () => stopCapture('music'));
+
+// Título atual da janela do app de música (Spotify mostra "Artista - Música").
+ipcMain.handle('music:title', async (_e, sourceId) => {
+  if (typeof sourceId !== 'string') return '';
+  const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } }).catch(() => []);
+  return sources.find((s) => s.id === sourceId)?.name ?? '';
 });
 
-ipcMain.handle('screen-audio:stop', stopScreenAudio);
 app.on('before-quit', () => {
   quitting = true;
-  stopScreenAudio();
+  for (const kind of [...audioProcs.keys()]) stopCapture(kind);
 });
 
 app.whenReady().then(() => {

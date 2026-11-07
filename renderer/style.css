@@ -281,6 +281,72 @@ button.chip:disabled { opacity: 1; }
 }
 .composer .send { font-size: 0; }
 
+/* ---------- Rádio da sala (radio.js) ---------- */
+
+/* Player fino logo acima do chat, mesma largura dele. */
+.radio-bar { flex: none; display: flex; justify-content: center; padding: 4px 132px 4px 12px; }
+.radio-bar[hidden] { display: none; }
+.radio-player {
+  width: min(892px, 100%); height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 6px 0 10px;
+  background: rgba(16, 16, 22, .82); border: 1px solid rgba(255, 43, 214, .35); border-radius: 20px;
+  box-shadow: 0 0 18px -6px var(--magenta); font-size: 13px; min-width: 0;
+}
+.radio-disc { width: 22px; height: 22px; flex: none; fill: #111; stroke: var(--magenta); stroke-width: 2; }
+.radio-disc .hub { fill: var(--magenta); stroke: none; }
+.radio-disc path { fill: none; stroke: #555; stroke-width: 1.5; }
+.radio-bar.playing .radio-disc { animation: disc-spin 3s linear infinite; }
+@keyframes disc-spin { to { transform: rotate(360deg); } }
+.radio-eq { display: flex; align-items: flex-end; gap: 2px; height: 14px; flex: none; }
+.radio-eq i { width: 3px; height: 4px; background: var(--cyan); border-radius: 1px; }
+.radio-bar.playing .radio-eq i { animation: eq-bounce .9s ease-in-out infinite alternate; }
+.radio-bar.playing .radio-eq i:nth-child(2) { animation-delay: -.3s; }
+.radio-bar.playing .radio-eq i:nth-child(3) { animation-delay: -.6s; }
+.radio-bar.playing .radio-eq i:nth-child(4) { animation-delay: -.15s; }
+@keyframes eq-bounce { from { height: 3px; } to { height: 14px; } }
+@media (prefers-reduced-motion: reduce) {
+  .radio-bar.playing .radio-disc, .radio-bar.playing .radio-eq i { animation: none; }
+}
+.radio-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.radio-title span { color: var(--muted); }
+.radio-dj { flex: none; color: var(--magenta); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.radio-player .spacer { flex: 1; }
+.radio-count { flex: none; color: var(--muted); font-size: 12px; white-space: nowrap; }
+#radio-volume { width: 80px; flex: none; padding: 0; accent-color: var(--magenta); }
+#radio-volume[hidden] { display: none; }
+.radio-toggle {
+  width: 28px; height: 28px; flex: none; border-radius: 50%; padding: 0; font-size: 11px; display: grid; place-items: center;
+  border: 1.5px solid var(--magenta); background: var(--magenta); color: #111;
+}
+.radio-toggle.stop { background: transparent; color: var(--magenta); }
+
+/* Caixa de som no canto do palco: clicar vira DJ ou sintoniza. */
+.radio-box {
+  position: absolute; left: 22px; bottom: 20px; z-index: 3; padding: 0; border: none; background: none;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;
+}
+.radio-box svg { width: 72px; height: 102px; filter: drop-shadow(3px 4px 0 rgba(0, 0, 0, .55)); transition: transform .15s; }
+.radio-box:hover svg { transform: translateY(-3px) rotate(-2deg); }
+.radio-box .trim { stroke: rgba(255, 255, 255, .15); }
+.radio-box .cone { stroke: #3a3a48; }
+.radio-box .dot { fill: #3a3a48; }
+.radio-box .waves { stroke: transparent; }
+.radio-box.on .trim { stroke: var(--magenta); }
+.radio-box.on .cone.small, .radio-box.on .dot.small { stroke: var(--cyan); }
+.radio-box.on .dot.small { fill: var(--cyan); }
+.radio-box.on .cone.big { stroke: var(--magenta); }
+.radio-box.on .dot.big { fill: var(--magenta); }
+.radio-box.on .waves { stroke: var(--cyan); }
+.radio-box.tuned .cone.big, .radio-box.tuned .dot.big { animation: woofer .45s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
+@keyframes woofer { to { transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) {
+  .radio-box.tuned .cone.big, .radio-box.tuned .dot.big { animation: none; }
+}
+.radio-label {
+  font-size: 10px; font-weight: 700; letter-spacing: .14em; color: var(--muted); white-space: nowrap;
+  background: rgba(0, 0, 0, .6); padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line);
+}
+.radio-box.on .radio-label { color: var(--magenta); border-color: var(--magenta); text-shadow: 0 0 8px var(--magenta); }
+
 /* ---------- Tela compartilhada (por cima do chat) ---------- */
 
 .screen-view {
@@ -457,6 +523,18 @@ svg.avatar-seat .ki .k3 { animation-delay: .9s; }
 }
 #screen-help { padding: 5px 12px; font-size: 12px; font-weight: 700; color: var(--cyan); border-color: rgba(var(--cyan-rgb), .5); white-space: nowrap; }
 #screen-help.on { background: rgba(var(--cyan-rgb), .15); }
+.badge.dj { color: var(--magenta); border-color: rgba(255, 43, 214, .55); background: rgba(255, 43, 214, .12); }
+/* DJ da rádio (radio.js): notinhas subindo. */
+svg.avatar-seat .av-notes text { font-size: 18px; font-weight: 700; animation: note-rise 2.2s ease-out infinite; }
+svg.avatar-seat .av-notes .n2 { animation-delay: 1.1s; }
+@keyframes note-rise {
+  from { transform: translateY(8px); opacity: 0; }
+  25% { opacity: 1; }
+  to { transform: translateY(-22px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  svg.avatar-seat .av-notes text { animation: none; }
+}
 .badge.creator { color: var(--amber); border-color: rgba(255, 182, 39, .55); }
 .badge.host { color: var(--cyan); border-color: rgba(var(--cyan-rgb), .55); }
 .seat[title] { cursor: pointer; }
@@ -644,6 +722,34 @@ label.check input { width: auto; }
   background: linear-gradient(90deg, #90cea1, #01b4e4);
 }
 #movie-who-extra { width: 100%; max-width: 420px; }
+.movies-sort { display: flex; gap: 4px; margin: 6px 0 2px; }
+.movies-sort button {
+  padding: 5px 12px; border-radius: 999px; font-size: 12px; background: transparent;
+  border: 1px solid var(--line); color: var(--muted);
+}
+.movies-sort button.on { color: #111; background: var(--amber); border-color: var(--amber); }
+.movie-card { position: relative; }
+.movie-place {
+  position: absolute; top: 6px; left: 6px; z-index: 1; padding: 2px 8px; border-radius: 6px;
+  font: 700 13px var(--marker, inherit); color: #111; background: rgba(255, 255, 255, .85); box-shadow: 0 2px 6px rgba(0, 0, 0, .5);
+}
+.movie-place.p1 { background: #ffd34d; }
+.movie-place.p2 { background: #d9dde6; }
+.movie-place.p3 { background: #e0a070; }
+.movie-card .movie-score {font-size: 12px; color: var(--amber); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.movie-card .movie-score b { font-size: 13px; margin: 0; display: inline; }
+.movie-card .movie-score.none { color: var(--muted); opacity: .7; }
+/* Nota: 10 estrelas, acende até a apontada. */
+.stars { display: flex; gap: 2px; }
+.stars .star {
+  width: 30px; height: 30px; padding: 0; border: none; background: none; font-size: 26px; line-height: 1;
+  color: rgba(255, 255, 255, .16); transition: color .1s, transform .1s; cursor: pointer;
+}
+.stars .star.on { color: var(--amber); text-shadow: 0 0 10px rgba(255, 182, 39, .55); }
+.stars .star:not(:disabled):hover { transform: scale(1.15); }
+.stars.locked .star { cursor: not-allowed; }
+.rating-hint { font-weight: 400; color: var(--muted); text-transform: none; letter-spacing: 0; margin-left: 6px; }
+#movie-rating-others:empty { display: none; }
 
 /* Sensibilidade: o medidor é a própria barra; no manual, arrasta a linha
    (um range invisível por cima, na mesma escala em dB). */

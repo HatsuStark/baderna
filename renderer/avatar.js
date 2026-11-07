@@ -883,7 +883,7 @@ function bodyOf(a) {
   return BODIES[a.body] ?? BODIES['padrão'];
 }
 
-function avatarHead(a) {
+function avatarHead(a, phones = null) {
   const { sx, sy, dy } = bodyOf(a).head;
   // Escala em volta do centro da cabeça (80,66): chapéu e rosto acompanham.
   const transform = `translate(80 ${66 + dy}) scale(${sx} ${sy}) translate(-80 -66)`;
@@ -891,7 +891,7 @@ function avatarHead(a) {
   // Camadas: cabelo de trás, cabeça, detalhes, barba, sobrancelha, chapéu
   // (cobre a testa), olhos, acessório e as duas bocas.
   const skin = PREMIUM_SKINS[a.costume];
-  if (skin) return `<g class="av-head"><g transform="${transform}">${skin.head()}</g></g>`;
+  if (skin) return `<g class="av-head"><g transform="${transform}">${skin.head()}${avatarPhones(phones)}</g></g>`;
   return `<g class="av-head"><g transform="${transform}">
     ${avatarTopBack(a)}
     <ellipse cx="80" cy="66" rx="43" ry="37" fill="${a.skin}" stroke="${INK}" stroke-width="3"/>
@@ -908,7 +908,30 @@ function avatarHead(a) {
       <path d="M66 82 Q80 86 94 82 L93 86 Q80 89 67 86 Z" fill="#fff"/>
       ${a.mouth === 'aparelho' ? '<path d="M67 84.5 Q80 88.5 93 84.5" fill="none" stroke="#adb5bd" stroke-width="1.6"/>' : ''}
     </g>
+    ${avatarPhones(phones)}
   </g></g>`;
+}
+
+// Fone da rádio (radio.js): 'dj' magenta, 'on' (ouvindo) ciano. Por cima do
+// chapéu, dentro da cabeça: balança junto quando a pessoa fala.
+function avatarPhones(phones) {
+  if (phones !== 'dj' && phones !== 'on') return '';
+  const color = phones === 'dj' ? '#ff2bd6' : '#19f0ff';
+  const band = 'M34 64 Q34 14 80 14 Q126 14 126 64';
+  return `<g class="av-phones">
+    <path d="${band}" fill="none" stroke="${INK}" stroke-width="10" stroke-linecap="round"/>
+    <path d="${band}" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round"/>
+    <rect x="24" y="52" width="16" height="28" rx="6" fill="${color}" stroke="${INK}" stroke-width="3"/>
+    <rect x="120" y="52" width="16" height="28" rx="6" fill="${color}" stroke="${INK}" stroke-width="3"/>
+  </g>`;
+}
+
+// Notinhas subindo do DJ (animadas no style.css).
+function avatarNotes() {
+  return `<g class="av-notes">
+    <text class="n1" x="14" y="24" fill="#ff2bd6">♪</text>
+    <text class="n2" x="136" y="18" fill="#19f0ff">♫</text>
+  </g>`;
 }
 
 // id único por SVG: o Chrome resolve url(#id) pelo primeiro do documento, e
@@ -2051,7 +2074,7 @@ function rollCostume(used = []) {
 // aparece (classe .speaking no pai), sem redesenhar a cada frame.
 // helping: emprestando upload pra uma transmissão. Braços pra cima, mãos
 // abertas pro céu doando energia (o item da mão fica guardado).
-function avatarSeatSvg(raw, { helping = false } = {}) {
+function avatarSeatSvg(raw, { helping = false, phones = null } = {}) {
   const a = dressed(sanitizeAvatar(raw));
   const def = CHAIRS[a.chair] ?? CHAIRS.puff;
   const chair = typeof def === 'function' ? def(a) : def;
@@ -2060,9 +2083,10 @@ function avatarSeatSvg(raw, { helping = false } = {}) {
     ${chair.back}
     ${helping ? avatarRaisedArms(a) : ''}
     ${avatarBody(a, helping)}
-    ${avatarHead(a)}
+    ${avatarHead(a, phones)}
     ${chair.front}
     ${helping ? avatarEnergy(a) : avatarHandItem(a)}
+    ${phones === 'dj' ? avatarNotes() : ''}
   </svg>`;
 }
 
