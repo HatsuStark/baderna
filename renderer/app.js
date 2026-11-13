@@ -129,6 +129,7 @@ const state = {
   roster: new Map(),  // só no host: peerId -> { name, seq }
   selfSeat: null,
   audioCtx: null,
+  meterCtx: null,     // só pros medidores; nunca troca de saída (ver addMeter)
   meters: new Map(),  // peerId -> { src, analyser, buf, lastLoud, level }
   rafId: 0,
   preview: null,      // teste de microfone no lobby: { stream, ctx, raf }
@@ -344,11 +345,12 @@ async function teardown() {
   clearInterval(state.statsTimer);
   for (const id of [...state.meters.keys()]) removeMeter(id);
   await state.audioCtx?.close().catch(() => {});
+  await state.meterCtx?.close().catch(() => {});
 
   Object.assign(state, {
     room: null, mainPeer: null, beacon: null, localStream: null, mic: null, sendStream: null, gateOpen: true, myId: null,
     seq: 0, nextSeq: 1, hostId: null, muted: false, deaf: false, mutedBeforeDeaf: false, leaving: false,
-    roster: new Map(), selfSeat: null, audioCtx: null, rafId: 0, lastChat: null, theme: DEFAULT_THEME,
+    roster: new Map(), selfSeat: null, audioCtx: null, meterCtx: null, rafId: 0, lastChat: null, theme: DEFAULT_THEME,
   });
   $('seats').replaceChildren();
   $('timeline').replaceChildren();
@@ -2449,10 +2451,21 @@ function applyCtxSink() {
 
 // ---------- Indicador de quem está falando ----------
 
+// Contexto próprio dos medidores: o setSinkId no contexto principal (trocar a
+// saída de som, ou logo ao criá-lo ao entrar) deixa mudas as fontes de voz
+// remota já ligadas nele, e os bonecos dos outros paravam de mexer a cabeça.
+// Este nunca toca som, então nunca precisa trocar de saída.
+function meterContext() {
+  if (!state.meterCtx) state.meterCtx = new AudioContext();
+  if (state.meterCtx.state === 'suspended') state.meterCtx.resume().catch(() => {});
+  return state.meterCtx;
+}
+
 function addMeter(id, stream) {
   removeMeter(id);
-  const src = audioContext().createMediaStreamSource(stream);
-  const analyser = state.audioCtx.createAnalyser();
+  const ctx = meterContext();
+  const src = ctx.createMediaStreamSource(stream);
+  const analyser = ctx.createAnalyser();
   analyser.fftSize = 512;
   src.connect(analyser);
   state.meters.set(id, { src, analyser, buf: new Float32Array(analyser.fftSize), lastLoud: 0, level: 0 });
