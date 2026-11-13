@@ -482,6 +482,8 @@ const AVATAR_NAMES = {
     'frankenstein': 'Frankenstênio', 'sadako': 'Sadaquinha do Poço', 'alien': 'ET de Varginha', 'jigsaw': 'Tio Serrote',
     'annabelle': 'Anabéu', 'valak': 'Irmã Valquíria', 'regan': 'Reginha Cospe-Sopa', 'tubarao': 'Tubarão Te Amo',
     'hannibal': 'Aníbal do Churrasco', 'lobisomem': 'Lobão da Lua Cheia', 'mumia': 'Faraó Ãozinho', 'predador': 'Predadô do Mato',
+    'monitor-apito': 'Monitor do Apito', 'monitor-lanterna': 'Monitora da Lanterna', 'monitor-violao': 'Tio do Violão',
+    'monitor-marshmallow': 'Rei do Marshmallow', 'monitor-remo': 'Capitão do Pedalinho',
   },
 };
 const avatarName = (key, value) => AVATAR_NAMES[key]?.[value] ?? value;
@@ -507,7 +509,8 @@ const AVATAR_OPTIONS = {
   chair: allIn('chair'),
   item: ['nada', ...allIn('item')],
   costume: ['nada', 'jason', 'myers', 'freddy', 'leatherface', 'ghostface', 'chucky', 'art', 'pinhead', 'pennywise', 'dracula', 'frankenstein', 'sadako',
-    'alien', 'jigsaw', 'annabelle', 'valak', 'regan', 'tubarao', 'hannibal', 'lobisomem', 'mumia', 'predador'],
+    'alien', 'jigsaw', 'annabelle', 'valak', 'regan', 'tubarao', 'hannibal', 'lobisomem', 'mumia', 'predador',
+    'monitor-apito', 'monitor-lanterna', 'monitor-violao', 'monitor-marshmallow', 'monitor-remo'],
 };
 
 // Seções do editor de boneco.
@@ -891,7 +894,7 @@ function avatarHead(a, phones = null) {
   // Camadas: cabelo de trás, cabeça, detalhes, barba, sobrancelha, chapéu
   // (cobre a testa), olhos, acessório e as duas bocas.
   const skin = PREMIUM_SKINS[a.costume];
-  if (skin) return `<g class="av-head"><g transform="${transform}">${skin.head()}${avatarPhones(phones)}</g></g>`;
+  if (skin?.head) return `<g class="av-head"><g transform="${transform}">${skin.head()}${avatarPhones(phones)}</g></g>`;
   return `<g class="av-head"><g transform="${transform}">
     ${avatarTopBack(a)}
     <ellipse cx="80" cy="66" rx="43" ry="37" fill="${a.skin}" stroke="${INK}" stroke-width="3"/>
@@ -2044,6 +2047,65 @@ const PREMIUM_SKINS = {
   },
 };
 
+// Monitores do acampamento (sexta-feira 13): sem head, a pessoa continua com o
+// próprio rosto; a fantasia só põe boné, camiseta de monitor, apito e um item.
+// prop: SVG em volta da mão direita (texto) ou desenho inteiro (função de a).
+// A mão do corpo largo fica em x=146 de 160: o item não passa de uns +12 dela.
+const CAMP_LOG = {
+  back: '',
+  front: `<rect x="8" y="152" width="144" height="44" rx="22" fill="#7a4a22" stroke="${INK}" stroke-width="3"/>
+    <path d="M30 164 Q60 160 96 166 M40 182 Q80 178 120 184" fill="none" stroke="#4e2e12" stroke-width="2.5" stroke-linecap="round"/>
+    <ellipse cx="130" cy="174" rx="14" ry="20" fill="#c99a62" stroke="${INK}" stroke-width="3"/>
+    <ellipse cx="130" cy="174" rx="8" ry="12" fill="none" stroke="#8a5a2b" stroke-width="1.8"/>
+    <ellipse cx="130" cy="174" rx="3" ry="5" fill="none" stroke="#8a5a2b" stroke-width="1.5"/>
+    <path d="M48 152 l-6 -10 M48 148 l6 -6" stroke="#4e2e12" stroke-width="3" stroke-linecap="round"/>`,
+};
+const campMonitor = (prop) => ({
+  look: { top: 'boné', topColor: '#f1e6c8', shirt: '#2b8a3e' },
+  kit: {
+    main: '#2b8a3e',
+    draw: (a, t) => area('#2b8a3e') + `<path d="M62 ${t} Q80 ${t + 12} 98 ${t}" fill="none" stroke="#f1e6c8" stroke-width="5"/>
+      <text x="80" y="${t + 36}" text-anchor="middle" font-family="Permanent Marker" font-size="11" fill="#f1e6c8">MONITOR</text>`,
+  },
+  over: (a, t) => `<path d="M66 ${t} Q68 ${t + 14} 98 ${t + 16}" fill="none" stroke="#ff922b" stroke-width="2"/>
+    <g transform="translate(102 ${t + 17}) rotate(-15)"><rect x="-8" y="-4" width="14" height="8" rx="4" fill="#ced4da" stroke="${INK}" stroke-width="1.6"/>
+    <rect x="4" y="-3" width="7" height="4" fill="#adb5bd" stroke="${INK}" stroke-width="1.2"/></g>`,
+  prop: typeof prop === 'function' ? prop : (a) => {
+    const [hx, hy] = bodyOf(a).hands[1];
+    return `<g transform="translate(${hx} ${hy})">${prop}</g>${skinHand(a)}`;
+  },
+  chair: CAMP_LOG,
+});
+
+Object.assign(PREMIUM_SKINS, {
+  // Prancheta com a chamada (sempre falta alguém).
+  'monitor-apito': campMonitor(`<g transform="rotate(-10)"><rect x="-14" y="-34" width="26" height="34" rx="2" fill="#a9743c" stroke="${INK}" stroke-width="2"/>
+    <rect x="-10" y="-28" width="18" height="24" fill="#f8f9fa"/><rect x="-5" y="-37" width="8" height="5" rx="1" fill="#868e96" stroke="${INK}" stroke-width="1.2"/>
+    <path d="M-7 -22 H5 M-7 -17 H5 M-7 -12 H1" stroke="#495057" stroke-width="1.5"/><path d="M-8 -9 l3 3 5 -7" fill="none" stroke="#e03131" stroke-width="1.6"/></g>`),
+  // Lanterna apontada pro mato, com o facho.
+  'monitor-lanterna': campMonitor(`<path d="M-6 -34 L-40 -118 L12 -118 L5 -34 Z" fill="#ffe066" opacity=".3"/>
+    <g transform="rotate(-8)"><rect x="-5" y="-26" width="10" height="26" rx="2" fill="#343a40" stroke="${INK}" stroke-width="2"/>
+    <path d="M-7 -26 H7 L9 -34 H-9 Z" fill="#495057" stroke="${INK}" stroke-width="2"/><rect x="-8" y="-36" width="16" height="3" fill="#fff3bf"/></g>`),
+  // Violão do luau, no colo (no mesmo lugar da guitarra), com as duas mãos.
+  'monitor-violao': campMonitor((a) => `<g transform="translate(76 152) rotate(-24)">
+    <rect x="4" y="-3.5" width="60" height="7" fill="#5c3d1e" stroke="${INK}" stroke-width="2"/>
+    <rect x="62" y="-6" width="12" height="12" rx="2" fill="#3b2414" stroke="${INK}" stroke-width="2"/>
+    <path d="M-34 0 Q-34 -22 -16 -18 Q-8 -14 -2 -12 Q10 -16 12 0 Q10 16 -2 12 Q-8 14 -16 18 Q-34 22 -34 0 Z" fill="#d9a066" stroke="${INK}" stroke-width="2.5"/>
+    <circle cx="-6" cy="0" r="5" fill="${INK}"/><path d="M-22 -6 V6" stroke="#5c3d1e" stroke-width="3"/>
+    <path d="M-6 -1 H64 M-6 1 H64" stroke="#e9ecef" stroke-width=".7"/></g>
+    ${bodyOf(a).hands.map(([cx, cy, r]) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${a.topColor}" stroke="${INK}" stroke-width="2.5"/>`).join('')}`),
+  // Marshmallow no espeto, tostado e pegando fogo.
+  'monitor-marshmallow': campMonitor(`<g transform="translate(-22 4)"><path d="M22 -4 L22 -64" stroke="#8a5a2b" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M24 -88 Q14 -74 22 -66 Q30 -72 28 -80 Q32 -76 32 -70 Q36 -80 24 -88 Z" fill="#ff922b"/>
+    <path d="M24 -80 Q20 -74 24 -70 Q28 -74 24 -80 Z" fill="#ffe066"/>
+    <rect x="15" y="-72" width="16" height="13" rx="4" fill="#f8f0e3" stroke="${INK}" stroke-width="2" transform="rotate(20 23 -65)"/>
+    <path d="M17 -64 Q23 -60 29 -62" fill="none" stroke="#b5651d" stroke-width="3" transform="rotate(20 23 -65)"/></g>`),
+  // Remo do pedalinho (o lago não é seguro, mas ninguém liga).
+  'monitor-remo': campMonitor(`<g transform="rotate(-8)"><rect x="-3" y="-80" width="6" height="96" rx="2" fill="#a9743c" stroke="${INK}" stroke-width="2"/>
+    <path d="M-10 16 Q-12 40 0 50 Q12 40 10 16 Z" fill="#e8590c" stroke="${INK}" stroke-width="2.5"/>
+    <rect x="-6" y="-86" width="12" height="8" rx="3" fill="#343a40" stroke="${INK}" stroke-width="1.5"/></g>`),
+});
+
 const COSTUMES = Object.keys(PREMIUM_SKINS);
 // Peças internas: fora das categorias, o sanitizeAvatar não deixa chegar de
 // outro peer. A fantasia entra só pelo campo costume.
@@ -2061,10 +2123,14 @@ function dressed(a) {
   return skin ? { ...a, symbol: 'nada', item: 'nada', ...skin.look } : a;
 }
 
-// Sorteia uma fantasia, evitando as que já estão na sala enquanto der.
+// Sorteia uma fantasia, evitando as que já estão na sala enquanto der. A
+// especial do evento (o mascarado da sexta 13) só sai se ninguém estiver com
+// ela, e com chance de 1 em 3; quem entra junto pode dar dois, e tudo bem.
 function rollCostume(used = []) {
   const taken = Array.isArray(used) ? used : [];
-  const pool = EVENT_COSTUMES ?? COSTUMES;
+  const special = ACTIVE_EVENT?.special;
+  if (special && !taken.includes(special) && Math.random() < 1 / 3) return special;
+  const pool = (EVENT_COSTUMES ?? COSTUMES).filter((id) => id !== special);
   const free = pool.filter((id) => !taken.includes(id));
   const list = free.length ? free : pool;
   return list[Math.floor(Math.random() * list.length)];

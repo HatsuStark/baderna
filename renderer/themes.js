@@ -97,6 +97,86 @@ const THEMES = {
     },
   },
 
+  // Sexta-feira 13: acampamento à beira do lago, de madrugada. A neblina passa
+  // devagar, a luz da cabana pisca e a fogueira tremula (SMIL, sem script).
+  acampamento: {
+    name: 'Acampamento Maldito',
+    bg: '#050a12',
+    svg: () => {
+      const rnd = seeded(13);
+      let stars = '';
+      for (let i = 0; i < 110; i++) stars += `<circle cx="${rnd() * 1440}" cy="${rnd() * 400}" r="${0.5 + rnd() * 1.1}" fill="#fff" opacity="${0.15 + rnd() * 0.55}"/>`;
+      const pines = (from, to, base, minH, maxH, color) => {
+        let out = '';
+        for (let x = from; x < to; x += 22 + rnd() * 26) {
+          const h = minH + rnd() * (maxH - minH);
+          const w = h * (0.32 + rnd() * 0.08);
+          out += `<path d="M${x} ${base - h} L${x + w / 2} ${base} H${x - w / 2} Z"/>`;
+        }
+        return `<g fill="${color}">${out}</g>`;
+      };
+      let reflection = '';
+      for (let i = 0; i < 9; i++) {
+        const w = 70 - i * 6 + rnd() * 20;
+        reflection += `<rect x="${300 - w / 2 + (rnd() - 0.5) * 16}" y="${486 + i * 12}" width="${w}" height="3" rx="1.5" fill="#e9f0dc" opacity="${0.5 - i * 0.05}"/>`;
+      }
+      const fog = (y, dur, dx, op) => `<ellipse cx="720" cy="${y}" rx="900" ry="40" fill="#a9c9c2" opacity="${op}" filter="url(#th-soft)">
+        <animateTransform attributeName="transform" type="translate" values="${-dx} 0;${dx} 0;${-dx} 0" dur="${dur}s" repeatCount="indefinite"/></ellipse>`;
+      return `
+        <defs>
+          <linearGradient id="th-ca-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#03070e"/><stop offset=".6" stop-color="#0b1e2a"/><stop offset="1" stop-color="#16352f"/></linearGradient>
+          <linearGradient id="th-ca-lake" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f2a33"/><stop offset="1" stop-color="#050f14"/></linearGradient>
+          <radialGradient id="th-ca-halo"><stop offset=".3" stop-color="#d8e8d0" stop-opacity=".28"/><stop offset="1" stop-color="#d8e8d0" stop-opacity="0"/></radialGradient>
+          <radialGradient id="th-ca-moon" cx=".4" cy=".38"><stop offset="0" stop-color="#ffffff"/><stop offset=".7" stop-color="#e6eddb"/><stop offset="1" stop-color="#b9c7ae"/></radialGradient>
+          <radialGradient id="th-ca-fire"><stop offset="0" stop-color="#ff8a1f" stop-opacity=".55"/><stop offset=".5" stop-color="#e8590c" stop-opacity=".18"/><stop offset="1" stop-color="#e8590c" stop-opacity="0"/></radialGradient>
+        </defs>
+        <rect width="1440" height="900" fill="url(#th-ca-sky)"/>
+        ${stars}
+        <circle cx="300" cy="160" r="280" fill="url(#th-ca-halo)"/>
+        <circle cx="300" cy="160" r="82" fill="url(#th-ca-moon)"/>
+        <circle cx="276" cy="140" r="13" fill="#c3cfb6" opacity=".55"/><circle cx="326" cy="186" r="18" fill="#c3cfb6" opacity=".45"/><circle cx="330" cy="128" r="7" fill="#c3cfb6" opacity=".55"/>
+        ${pines(-20, 1460, 478, 70, 150, '#071318')}
+        <rect y="474" width="1440" height="136" fill="url(#th-ca-lake)"/>
+        ${reflection}
+        <path d="M0 500 Q200 496 420 502 M560 520 Q760 514 980 522 M120 556 Q360 550 600 558 M820 570 Q1040 564 1300 572" fill="none" stroke="#3c6a70" stroke-width="2" opacity=".35"/>
+        <g transform="translate(1000 548) rotate(-3)">
+          <path d="M-90 0 Q-60 18 0 18 Q60 18 90 0 Q60 6 0 6 Q-60 6 -90 0 Z" fill="#05090b"/>
+          <path d="M-20 4 L36 -40" stroke="#05090b" stroke-width="5" stroke-linecap="round"/></g>
+        <g transform="translate(1110 384)">
+          <rect x="0" y="40" width="170" height="92" fill="#0d0a08"/>
+          <path d="M-14 44 L85 -14 L184 44 Z" fill="#0a0806"/>
+          <rect x="128" y="-4" width="16" height="30" fill="#0a0806"/>
+          <rect x="30" y="66" width="34" height="30" fill="#ffc94a"><animate attributeName="opacity" values=".9;.85;.25;.9;.9;.1;.8;.9" dur="5s" repeatCount="indefinite"/></rect>
+          <path d="M47 66 V96 M30 81 H64" stroke="#0d0a08" stroke-width="3"/>
+          <rect x="100" y="76" width="30" height="56" fill="#060504"/></g>
+        ${fog(500, 70, 120, 0.16)}
+        ${CENTER_SHADE}
+        <rect y="600" width="1440" height="300" fill="#08110d"/>
+        <path d="M0 604 Q360 590 720 606 Q1080 618 1440 600 V620 H0 Z" fill="#0d1a13"/>
+        ${pines(-40, 150, 640, 160, 240, '#040a08')}${pines(1330, 1480, 640, 160, 240, '#040a08')}
+        <g transform="translate(200 700)">
+          <circle r="260" fill="url(#th-ca-fire)"><animate attributeName="opacity" values="1;.75;.95;.7;1" dur="1.7s" repeatCount="indefinite"/></circle>
+          <path d="M-60 26 L60 -6 M-60 -6 L60 26" stroke="#3b2414" stroke-width="16" stroke-linecap="round"/>
+          <path d="M-34 6 Q-40 -40 -10 -70 Q-14 -40 4 -36 Q0 -80 26 -104 Q24 -60 40 -40 Q48 -10 30 10 Z" fill="#e8590c"/>
+          <path d="M-18 8 Q-20 -24 0 -44 Q0 -22 14 -18 Q24 -2 14 10 Z" fill="#ffd43b"/>
+          ${[[-20, -120], [12, -150], [36, -132]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.5" fill="#ffa94d"><animate attributeName="cy" values="${y + 30};${y - 30}" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0" dur="2.4s" repeatCount="indefinite"/></circle>`).join('')}
+        </g>
+        <g transform="translate(470 690)">
+          <ellipse cx="0" cy="22" rx="40" ry="10" fill="#1a110a"/><rect x="-36" y="-10" width="72" height="32" fill="#3b2414"/><ellipse cx="0" cy="-10" rx="36" ry="10" fill="#8a5a2b"/>
+          <path d="M-4 -12 L30 -70 L40 -64 L6 -8 Z" fill="#adb5bd" stroke="#1b1b1b" stroke-width="2"/><path d="M28 -66 L44 -92 L54 -86 L38 -60 Z" fill="#212529"/>
+          <path d="M24 -58 l-3 10 2 6" fill="none" stroke="#c92a2a" stroke-width="2"/></g>
+        <g transform="translate(1010 610) rotate(-4) scale(.82)">
+          <rect x="-8" y="10" width="14" height="120" fill="#2e1d10"/>
+          <rect x="-130" y="-40" width="260" height="70" rx="4" fill="#6b4220" stroke="#1b1208" stroke-width="4"/>
+          <text x="0" y="-12" text-anchor="middle" font-family="Permanent Marker" font-size="26" fill="#f1e6c8">ACAMPAMENTO</text>
+          <text x="0" y="18" text-anchor="middle" font-family="Permanent Marker" font-size="20" fill="#f1e6c8">LAGO CRISTALZINHO</text>
+          <text x="30" y="76" font-family="Permanent Marker" font-size="34" fill="#c92a2a" transform="rotate(10 30 76)">13</text></g>
+        ${fog(640, 90, 160, 0.1)}
+        ${tags([[800, 240, 44, '#ff3b3b', 0.7, -3, 'SEXTA-FEIRA 13'], [820, 280, 24, '#9be7a0', 0.5, -3, 'ki ki ki... ma ma ma']])}
+        ${GRAIN}`;
+    },
+  },
+
   arena: {
     name: 'Arena eSports',
     bg: '#07070f',

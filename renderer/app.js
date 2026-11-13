@@ -88,8 +88,9 @@ const NARRATION = {
   theme: ['{n} mudou o tema pra {t}.', '{n} redecorou: agora é {t}.', '{n} trocou o cenário pra {t}.'],
 };
 
+// Em evento, as frases dele entram no sorteio junto com as de sempre.
 function narrate(kind, vars = {}) {
-  const list = NARRATION[kind];
+  const list = [...NARRATION[kind], ...(ACTIVE_EVENT?.narration?.[kind] ?? [])];
   return list[Math.floor(Math.random() * list.length)].replace(/\{(\w)\}/g, (_, k) => vars[k] ?? '');
 }
 
@@ -243,7 +244,8 @@ async function join() {
       await joinViaBeacon();
     }
     showRoom();
-    if (ACTIVE_EVENT?.welcome) addSystem(ACTIVE_EVENT.welcome.replace('{c}', avatarName('costume', state.avatar.costume)));
+    const welcome = state.avatar.costume === ACTIVE_EVENT?.special ? ACTIVE_EVENT.welcomeSpecial : ACTIVE_EVENT?.welcome;
+    if (welcome) addSystem(welcome.replace('{c}', avatarName('costume', state.avatar.costume)));
     setLobbyStatus('');
     ensureCodecOrder(); // mede em segundo plano; precisa do mic aberto pras stats
   } catch (err) {

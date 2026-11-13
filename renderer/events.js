@@ -13,9 +13,32 @@
 //     welcome: 'Hoje você é {c}.', // aviso no chat ao entrar; {c} = nome da fantasia
 //     sounds: { join: 'sino', leave: 'sino' }, // ids de EVENT_SOUNDS; sem isso, o bipe normal
 //   }
+// Opcionais:
+//   when: (d) => ...      // no lugar de start/end, pra data que muda (sexta 13, Carnaval)
+//   special: 'jason',     // fantasia rara: no máximo uma na sala, sorteada 1 em 3 (rollCostume)
+//   welcomeSpecial: '…',  // aviso pra quem tirou a especial
+//   narration: { arrived: [...], left: [...], dropped: [...] }, // frases extras do narrador
 // O dia vem do relógio de cada PC, então vale deixar um dia de folga pra fuso.
 
 const EVENTS = [
+  {
+    id: 'sexta13',
+    when: (d) => d.getDay() === 5 && d.getDate() === 13,
+    theme: 'acampamento',
+    costumes: ['monitor-apito', 'monitor-lanterna', 'monitor-violao', 'monitor-marshmallow', 'monitor-remo', 'jason'],
+    special: 'jason',
+    welcome: '🔪 Sexta-feira 13 no acampamento. Hoje você é {c}. Ninguém vai sozinho buscar lenha.',
+    welcomeSpecial: '🔪 Sexta-feira 13. Você é {c}. Finge que é monitor, ninguém vai perceber.',
+    sounds: { join: 'sussurro', leave: 'facao' },
+    narration: {
+      arrived: ['{n} chegou no acampamento. Alguém conta quantos somos.', '{n} chegou bem na hora que a luz piscou.',
+        '{n} chegou de canoa. Do outro lado do lago. Sozinho.'],
+      left: ['{n} disse "já volto". Clássico.', '{n} foi sozinho buscar lenha. Péssima ideia.',
+        '{n} foi ver que barulho foi aquele lá fora.', '{n} foi nadar no lago à meia-noite.'],
+      dropped: ['{n} sumiu na neblina.', 'Um gato preto cruzou o cabo de {n}.', '{n} quebrou um espelho e caiu da sala.'],
+    },
+  },
+
   {
     id: 'halloween',
     start: [10, 30],
@@ -30,7 +53,8 @@ const EVENTS = [
 
 function eventOn(date) {
   const day = (date.getMonth() + 1) * 100 + date.getDate();
-  return EVENTS.find(({ start, end }) => {
+  return EVENTS.find(({ start, end, when }) => {
+    if (when) return when(date);
     const [from, to] = [start[0] * 100 + start[1], end[0] * 100 + end[1]];
     return from <= to ? day >= from && day <= to : day >= from || day <= to;
   }) ?? null;
@@ -155,4 +179,116 @@ const EVENT_SOUNDS = {
       node.stop(end);
     }
   },
+
+  // Sussurro "ki ki ki... ma ma ma": voz só de ar (ruído passando por
+  // ressonâncias de vogal), com eco de mata fechada.
+  sussurro(ctx, out, t) {
+    const noise = noiseBuffer(ctx, 0.5);
+    const voice = ctx.createGain();
+    voice.gain.value = 0.6;
+    const echo = ctx.createDelay(1);
+    echo.delayTime.value = 0.24;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.26;
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = 2600;
+    voice.connect(out);
+    voice.connect(echo).connect(tone).connect(feedback).connect(echo);
+    tone.connect(out);
+
+    // Um sopro: ruído com envelope, somado por filtros em paralelo.
+    const breath = (at, dur, attack, level, bands) => {
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, at);
+      env.gain.linearRampToValueAtTime(level, at + attack);
+      env.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      for (const [type, freq, q, gain] of bands) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        const g = ctx.createGain();
+        g.gain.value = gain;
+        src.connect(f).connect(g).connect(env);
+      }
+      env.connect(voice);
+      src.start(at, Math.random() * 0.3);
+      src.stop(at + dur + 0.02);
+    };
+    const ki = (at) => {
+      breath(at, 0.035, 0.003, 1, [['highpass', 2800, 0.7, 0.5]]);
+      breath(at + 0.025, 0.08, 0.01, 1, [['bandpass', 2400, 6, 1.6], ['bandpass', 3200, 8, 1.2]]);
+    };
+    const ma = (at) => {
+      breath(at, 0.05, 0.02, 1, [['bandpass', 260, 4, 1.4]]);
+      breath(at + 0.04, 0.14, 0.03, 1, [['bandpass', 750, 5, 1.8], ['bandpass', 1200, 6, 1.4], ['bandpass', 2600, 9, 0.6]]);
+    };
+    [0, 0.11, 0.22].forEach((d) => ki(t + d));
+    [0.44, 0.62, 0.8].forEach((d) => ma(t + d));
+  },
+
+  // Facão: zunido cortando o ar, pancada seca na madeira e o metal vibrando.
+  facao(ctx, out, t) {
+    const hit = t + 0.26;
+    const swoosh = ctx.createBufferSource();
+    swoosh.buffer = noiseBuffer(ctx, 0.4);
+    const sweep = ctx.createBiquadFilter();
+    sweep.type = 'bandpass';
+    sweep.Q.value = 1.6;
+    sweep.frequency.setValueAtTime(500, t);
+    sweep.frequency.exponentialRampToValueAtTime(4800, hit);
+    const swooshEnv = ctx.createGain();
+    swooshEnv.gain.setValueAtTime(0.0001, t);
+    swooshEnv.gain.exponentialRampToValueAtTime(0.5, hit - 0.04);
+    swooshEnv.gain.exponentialRampToValueAtTime(0.0001, hit + 0.02);
+    swoosh.connect(sweep).connect(swooshEnv).connect(out);
+    swoosh.start(t);
+    swoosh.stop(hit + 0.05);
+
+    const thud = ctx.createOscillator();
+    thud.frequency.setValueAtTime(130, hit);
+    thud.frequency.exponentialRampToValueAtTime(48, hit + 0.18);
+    const thudEnv = ctx.createGain();
+    thudEnv.gain.setValueAtTime(0.0001, hit);
+    thudEnv.gain.linearRampToValueAtTime(0.42, hit + 0.005);
+    thudEnv.gain.exponentialRampToValueAtTime(0.0001, hit + 0.3);
+    thud.connect(thudEnv).connect(out);
+    thud.start(hit);
+    thud.stop(hit + 0.32);
+
+    const crack = ctx.createBufferSource();
+    crack.buffer = noiseBuffer(ctx, 0.1);
+    const crackTone = ctx.createBiquadFilter();
+    crackTone.type = 'highpass';
+    crackTone.frequency.value = 1200;
+    const crackEnv = ctx.createGain();
+    crackEnv.gain.setValueAtTime(0.3, hit);
+    crackEnv.gain.exponentialRampToValueAtTime(0.0001, hit + 0.06);
+    crack.connect(crackTone).connect(crackEnv).connect(out);
+    crack.start(hit);
+    crack.stop(hit + 0.08);
+
+    for (const [freq, level, decay] of [[2340, 0.05, 1.1], [2352, 0.04, 1], [3530, 0.03, 0.8], [5100, 0.015, 0.5]]) {
+      const ring = ctx.createOscillator();
+      ring.frequency.value = freq;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, hit);
+      env.gain.linearRampToValueAtTime(level, hit + 0.004);
+      env.gain.exponentialRampToValueAtTime(0.0001, hit + decay);
+      ring.connect(env).connect(out);
+      ring.start(hit);
+      ring.stop(hit + decay + 0.02);
+    }
+  },
 };
+
+function noiseBuffer(ctx, seconds) {
+  const samples = new Float32Array(Math.ceil(ctx.sampleRate * seconds));
+  for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+  const buffer = ctx.createBuffer(1, samples.length, ctx.sampleRate);
+  buffer.copyToChannel(samples, 0);
+  return buffer;
+}
