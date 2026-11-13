@@ -183,11 +183,29 @@
     </label>
     <h3 id="sound-mine-title"></h3>
     <div id="sound-mine" class="sound-list"></div>
-    <button id="sound-add" class="ghost wide" type="button" title="MP3, OGG ou WAV · até 10 s e 512 KB">+ Adicionar áudio</button>
+    <button id="sound-add" class="ghost wide" type="button" title="MP3, OGG ou WAV · você escolhe o trecho (até 10 s)">+ Adicionar áudio</button>
     <input id="sound-file" type="file" accept="audio/*" hidden>
     <p id="sound-status" class="status"></p>
     <div id="sound-others" class="sound-list"></div>
   </div>
+
+  <dialog id="sound-edit" class="sound-edit">
+    <h2>🔊 Novo áudio</h2>
+    <label>Nome
+      <input id="sound-edit-name" type="text" maxlength="24" autocomplete="off" spellcheck="false">
+    </label>
+    <h3 class="sound-edit-title">Trecho <span id="sound-edit-range"></span></h3>
+    <div class="sound-wave">
+      <canvas id="sound-wave"></canvas>
+    </div>
+    <p class="status">Arraste as bordas pra escolher onde começa e onde termina (até 10 s).</p>
+    <div class="dialog-actions">
+      <button id="sound-edit-play" class="ghost" type="button">▶ Ouvir</button>
+      <span class="spacer"></span>
+      <button id="sound-edit-cancel" class="ghost" type="button">Cancelar</button>
+      <button id="sound-edit-save" class="primary" type="button">Salvar</button>
+    </div>
+  </dialog>
 
   <!-- ---------- Configurações ---------- -->
   <dialog id="settings-dialog">

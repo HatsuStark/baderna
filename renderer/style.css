@@ -598,6 +598,15 @@ svg.avatar-seat .av-notes .n2 { animation-delay: 1.1s; }
 .sound-row { display: flex; gap: 6px; }
 .sound-play { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Editor do áudio novo: nome + trecho escolhido na onda. */
+.sound-edit { display: flex; flex-direction: column; gap: 12px; }
+.sound-edit:not([open]) { display: none; }
+.sound-edit h2 { margin-bottom: 4px; }
+.sound-edit-title { margin: 4px 0 -4px; }
+.sound-edit-title span { color: var(--text); letter-spacing: .04em; text-transform: none; margin-left: 6px; }
+.sound-wave { height: 110px; border-radius: 12px; overflow: hidden; background: #0d0d11; border: 1px solid var(--line); touch-action: none; }
+.sound-wave canvas { display: block; width: 100%; height: 100%; cursor: ew-resize; }
+
 /* ---------- Diálogos ---------- */
 
 dialog {
