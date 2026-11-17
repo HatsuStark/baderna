@@ -177,6 +177,113 @@ const THEMES = {
     },
   },
 
+  // Natal: vila coberta de neve numa noite clara. O trenó cruza a lua devagar,
+  // as janelas e o pisca-pisca da árvore piscam e sai fumaça das chaminés
+  // (SMIL, sem script). A neve caindo é do style.css (.snow), por cima de tudo.
+  natal: {
+    name: 'Natal na Baderna',
+    bg: '#060b1c',
+    svg: () => {
+      const rnd = seeded(25);
+      let stars = '';
+      for (let i = 0; i < 120; i++) stars += `<circle cx="${rnd() * 1440}" cy="${rnd() * 420}" r="${0.5 + rnd() * 1.2}" fill="#fff" opacity="${0.2 + rnd() * 0.6}"/>`;
+      const pine = (x, base, h, color, snow = true) => {
+        const w = h * 0.42;
+        const layers = [0, 0.3, 0.56].map((f, i) => {
+          const top = base - h + f * h;
+          const ww = w * (0.6 + i * 0.22);
+          return `<path d="M${x} ${top} L${x + ww / 2} ${top + h * 0.42} H${x - ww / 2} Z" fill="${color}"/>`
+            + (snow ? `<path d="M${x} ${top} L${x + ww * 0.16} ${top + h * 0.13} Q${x} ${top + h * 0.1} ${x - ww * 0.16} ${top + h * 0.13} Z" fill="#e7f0ff" opacity=".85"/>` : '');
+        }).join('');
+        return `<rect x="${x - 4}" y="${base - 6}" width="8" height="12" fill="#1a1410"/>${layers}`;
+      };
+      let farPines = '';
+      for (let x = -20; x < 1460; x += 26 + rnd() * 30) farPines += pine(x, 512, 60 + rnd() * 60, '#0c1f2c', rnd() > 0.3);
+      const smoke = (x, y, delay) => [0, 1, 2].map((i) => `<circle cx="${x}" cy="${y}" r="${8 + i * 3}" fill="#cfd8e6" opacity="0">
+        <animate attributeName="cy" values="${y};${y - 90}" dur="6s" begin="${delay + i * 2}s" repeatCount="indefinite"/>
+        <animate attributeName="cx" values="${x};${x + 30}" dur="6s" begin="${delay + i * 2}s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;.35;0" dur="6s" begin="${delay + i * 2}s" repeatCount="indefinite"/></circle>`).join('');
+      const house = (x, y, w, h, wall, roof, light, delay) => `<g transform="translate(${x} ${y})">
+        <rect x="${w * 0.62}" y="${-h * 0.62}" width="16" height="34" fill="#2a1d18"/>
+        ${smoke(w * 0.62 + 8, -h * 0.62 - 6, delay)}
+        <rect x="0" y="0" width="${w}" height="${h}" fill="${wall}"/>
+        <path d="M-12 4 L${w / 2} ${-h * 0.55} L${w + 12} 4 Z" fill="${roof}"/>
+        <path d="M-12 4 L${w / 2} ${-h * 0.55} L${w + 12} 4 L${w + 4} 10 L${w / 2} ${-h * 0.42} L-4 10 Z" fill="#eef4ff"/>
+        <rect x="${w * 0.14}" y="${h * 0.3}" width="${w * 0.24}" height="${h * 0.3}" fill="${light}"><animate attributeName="opacity" values="1;.8;1;.9;1" dur="${3 + delay}s" repeatCount="indefinite"/></rect>
+        <rect x="${w * 0.6}" y="${h * 0.45}" width="${w * 0.22}" height="${h * 0.55}" fill="#120c0a"/>
+        <circle cx="${w * 0.71}" cy="${h * 0.42}" r="7" fill="none" stroke="#2f9e44" stroke-width="4"/><circle cx="${w * 0.71}" cy="${h * 0.42 - 7}" r="2" fill="#e03131"/></g>`;
+      const bulbColors = ['#ff6b6b', '#ffd43b', '#4dabf7', '#69db7c', '#f783ac'];
+      let bulbs = '';
+      for (let i = 0; i < 34; i++) {
+        const row = rnd();
+        const yy = 380 + row * 230;
+        const half = 30 + row * 105;
+        const xx = 1230 + (rnd() * 2 - 1) * half * 0.85;
+        bulbs += `<circle cx="${xx.toFixed(1)}" cy="${yy.toFixed(1)}" r="5" fill="${bulbColors[i % 5]}">
+          <animate attributeName="opacity" values="1;.2;1" dur="${1.2 + rnd() * 1.2}s" begin="${(rnd() * 2).toFixed(2)}s" repeatCount="indefinite"/></circle>`;
+      }
+      return `
+        <defs>
+          <linearGradient id="th-na-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#040817"/><stop offset=".55" stop-color="#0d1b3d"/><stop offset="1" stop-color="#22385f"/></linearGradient>
+          <radialGradient id="th-na-halo"><stop offset=".3" stop-color="#fff6d8" stop-opacity=".3"/><stop offset="1" stop-color="#fff6d8" stop-opacity="0"/></radialGradient>
+          <radialGradient id="th-na-moon" cx=".4" cy=".38"><stop offset="0" stop-color="#ffffff"/><stop offset=".7" stop-color="#fdf3d2"/><stop offset="1" stop-color="#e2d3a4"/></radialGradient>
+          <linearGradient id="th-na-snow" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dfe9f7"/><stop offset="1" stop-color="#93a8c8"/></linearGradient>
+          <radialGradient id="th-na-glow"><stop offset="0" stop-color="#ffd43b" stop-opacity=".35"/><stop offset="1" stop-color="#ffd43b" stop-opacity="0"/></radialGradient>
+        </defs>
+        <rect width="1440" height="900" fill="url(#th-na-sky)"/>
+        ${stars}
+        <circle cx="1100" cy="150" r="260" fill="url(#th-na-halo)"/>
+        <circle cx="1100" cy="150" r="78" fill="url(#th-na-moon)"/>
+        <circle cx="1076" cy="132" r="12" fill="#e9dcb4" opacity=".6"/><circle cx="1124" cy="176" r="16" fill="#e9dcb4" opacity=".5"/>
+        <g fill="#060b1c">
+          <animateTransform attributeName="transform" type="translate" values="-1700 40;1700 -40" dur="80s" repeatCount="indefinite"/>
+          <g transform="translate(1000 170) scale(.9)">
+            ${[0, 1, 2].map((i) => `<g transform="translate(${i * 46} ${-i * 4})"><ellipse cx="0" cy="0" rx="17" ry="7"/>
+              <path d="M12 -4 L20 -16 L26 -14 L18 -2 Z"/><path d="M20 -16 l-4 -10 M20 -16 l6 -10 M22 -22 l6 -2" stroke="#060b1c" stroke-width="2.5" fill="none"/>
+              <path d="M-12 4 l-4 10 M-6 5 l2 10 M8 5 l-2 10 M12 4 l4 10" stroke="#060b1c" stroke-width="3"/></g>`).join('')}
+            <path d="M-20 0 L-60 6" stroke="#060b1c" stroke-width="2"/>
+            <path d="M-120 -10 H-66 Q-58 -10 -60 2 L-64 14 H-118 Q-126 14 -124 0 Z"/>
+            <path d="M-128 20 H-58 Q-50 20 -52 12" stroke="#060b1c" stroke-width="3" fill="none"/>
+            <circle cx="-96" cy="-20" r="9"/><path d="M-104 -24 Q-96 -40 -84 -30 L-80 -22" stroke="#060b1c" stroke-width="5" fill="none"/>
+          </g>
+        </g>
+        <path d="M0 470 Q240 420 520 462 Q800 500 1080 450 Q1280 418 1440 452 V520 H0 Z" fill="#2c4470"/>
+        ${farPines}
+        <path d="M0 506 Q300 486 640 508 Q980 530 1440 500 V620 H0 Z" fill="url(#th-na-snow)"/>
+        ${house(110, 520, 120, 80, '#5c2b22', '#3d1d17', '#ffd166', 0)}
+        ${house(300, 540, 96, 66, '#2b4a3d', '#1d3329', '#ffc94a', 1.3)}
+        ${house(530, 528, 110, 74, '#4a3a5c', '#33284a', '#ffe08a', 2.1)}
+        ${CENTER_SHADE}
+        <rect y="600" width="1440" height="300" fill="#c9d6ea"/>
+        <path d="M0 604 Q360 588 720 606 Q1080 620 1440 598 V640 H0 Z" fill="#e8f0fb"/>
+        <path d="M0 700 Q300 690 600 704 M820 690 Q1100 680 1440 694" fill="none" stroke="#aebfd9" stroke-width="3" opacity=".7"/>
+        <circle cx="1230" cy="520" r="230" fill="url(#th-na-glow)"/>
+        <rect x="1218" y="610" width="24" height="40" fill="#3b2414"/>
+        <path d="M1230 340 L1300 460 H1160 Z M1230 400 L1330 540 H1130 Z M1230 460 L1360 620 H1100 Z" fill="#1f6b3a"/>
+        <path d="M1230 340 L1252 378 Q1230 372 1208 378 Z M1160 460 Q1230 448 1300 460 L1296 468 Q1230 456 1164 468 Z M1130 540 Q1230 526 1330 540 L1326 548 Q1230 534 1134 548 Z" fill="#eef4ff" opacity=".9"/>
+        <path d="M1180 430 Q1230 450 1282 424 M1158 510 Q1230 534 1306 502 M1136 590 Q1230 614 1336 578" fill="none" stroke="#fcc419" stroke-width="3" opacity=".8"/>
+        ${bulbs}
+        <path d="M1230 306 l9 20 22 2 -17 14 6 22 -20 -12 -20 12 6 -22 -17 -14 22 -2 Z" fill="#ffd43b" stroke="#e67700" stroke-width="2">
+          <animate attributeName="opacity" values="1;.7;1" dur="2s" repeatCount="indefinite"/></path>
+        <g transform="translate(1170 640)"><rect x="-26" y="-26" width="34" height="28" fill="#e03131"/><rect x="-11" y="-26" width="5" height="28" fill="#fcc419"/></g>
+        <g transform="translate(1300 646)"><rect x="-18" y="-22" width="30" height="24" fill="#4dabf7"/><rect x="-5" y="-22" width="5" height="24" fill="#fff"/></g>
+        <g transform="translate(200 700)">
+          <ellipse cx="0" cy="40" rx="64" ry="12" fill="#9fb2cf"/>
+          <circle cx="0" cy="0" r="52" fill="#f4f8ff" stroke="#9fb2cf" stroke-width="3"/>
+          <circle cx="0" cy="-74" r="36" fill="#f4f8ff" stroke="#9fb2cf" stroke-width="3"/>
+          <circle cx="-12" cy="-80" r="4" fill="#1b1b1b"/><circle cx="12" cy="-80" r="4" fill="#1b1b1b"/>
+          <path d="M0 -72 L30 -66 L0 -64 Z" fill="#ff922b"/>
+          <path d="M-14 -58 Q0 -50 14 -58" fill="none" stroke="#1b1b1b" stroke-width="3" stroke-dasharray="1 5" stroke-linecap="round"/>
+          <path d="M-34 -46 Q0 -32 34 -46 L36 -36 Q0 -22 -36 -36 Z" fill="#e03131"/><path d="M18 -38 L28 -4 L16 -4 L10 -36 Z" fill="#c92a2a"/>
+          <path d="M-30 -104 Q0 -116 30 -104 L24 -118 Q0 -126 -24 -118 Z" fill="#2f9e44"/><path d="M-18 -118 Q0 -150 18 -118" fill="#2f9e44"/>
+          <circle cx="0" cy="-10" r="4" fill="#1b1b1b"/><circle cx="0" cy="10" r="4" fill="#1b1b1b"/>
+          <path d="M-50 -10 L-96 -40 M-80 -30 L-90 -50 M50 -10 L96 -36" stroke="#4a2f1b" stroke-width="5" stroke-linecap="round"/>
+        </g>
+        ${tags([[760, 230, 46, '#ff6b6b', 0.75, -3, 'FELIZ NATAL'], [790, 272, 24, '#ffe08a', 0.55, -3, 'é pavê ou pacomê?']])}
+        ${GRAIN}`;
+    },
+  },
+
   arena: {
     name: 'Arena eSports',
     bg: '#07070f',

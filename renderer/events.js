@@ -16,11 +16,36 @@
 // Opcionais:
 //   when: (d) => ...      // no lugar de start/end, pra data que muda (sexta 13, Carnaval)
 //   special: 'jason',     // fantasia rara: no máximo uma na sala, sorteada 1 em 3 (rollCostume)
+//   specialChance: 1,     // chance da especial quando ninguém está com ela (padrão 1/3)
+//   convoy: true,         // palco em fila única: a especial na frente, o resto por ordem de chegada
 //   welcomeSpecial: '…',  // aviso pra quem tirou a especial
 //   narration: { arrived: [...], left: [...], dropped: [...] }, // frases extras do narrador
 // O dia vem do relógio de cada PC, então vale deixar um dia de folga pra fuso.
 
 const EVENTS = [
+  {
+    // Natal: uma pessoa por sala é o Papai Noel (quem abre a sala, ou o
+    // primeiro a entrar sem ele lá), o resto é rena puxando o trenó.
+    id: 'natal',
+    start: [11, 17],
+    end: [12, 26],
+    theme: 'natal',
+    costumes: ['papai-noel', 'rena-rodolfo', 'rena-corisco', 'rena-dancarina', 'rena-cometa', 'rena-trovao', 'rena-cupido'],
+    special: 'papai-noel',
+    specialChance: 1,
+    convoy: true,
+    welcome: '🦌 Natal na Baderna! Hoje você é {c}. O trenó não se puxa sozinho.',
+    welcomeSpecial: '🎅 Ho ho ho! Você é {c}. As renas puxam, você só segura a rédea.',
+    sounds: { join: 'sinos', leave: 'hohoho' },
+    narration: {
+      arrived: ['{n} desceu pela chaminé. Cuidado com a churrasqueira.', '{n} chegou de trenó e estacionou no telhado.',
+        '{n} chegou trazendo panetone com uva-passa. Ninguém pediu.', '{n} chegou pro amigo secreto sem presente.'],
+      left: ['{n} perguntou se era pavê ou pacomê e foi convidado a se retirar.', '{n} foi esquentar o chester.',
+        '{n} foi ver se o Papai Noel já passou.', '{n} foi tirar foto com o bom velhinho do shopping.'],
+      dropped: ['{n} caiu do trenó.', 'O pisca-pisca de {n} queimou.', '{n} ficou entalado na chaminé.'],
+    },
+  },
+
   {
     id: 'sexta13',
     when: (d) => d.getDay() === 5 && d.getDate() === 13,
@@ -282,6 +307,112 @@ const EVENT_SOUNDS = {
       ring.start(hit);
       ring.stop(hit + decay + 0.02);
     }
+  },
+  // Sinos de trenó: chacoalhadas de guizo (parciais metálicos, fora de
+  // harmonia) no ritmo do galope, fechando com três badaladas subindo.
+  sinos(ctx, out, t) {
+    const jingle = (at, level) => {
+      for (let i = 0; i < 4; i++) {
+        const start = at + Math.random() * 0.025;
+        const base = 2500 + Math.random() * 900;
+        for (const [ratio, amp] of [[1, 1], [1.52, 0.6], [2.18, 0.35], [2.9, 0.2]]) {
+          const osc = ctx.createOscillator();
+          osc.frequency.value = base * ratio;
+          const env = ctx.createGain();
+          env.gain.setValueAtTime(0.0001, start);
+          env.gain.linearRampToValueAtTime(level * amp * 0.02, start + 0.003);
+          env.gain.exponentialRampToValueAtTime(0.0001, start + 0.18);
+          osc.connect(env).connect(out);
+          osc.start(start);
+          osc.stop(start + 0.2);
+        }
+      }
+      const shake = ctx.createBufferSource();
+      shake.buffer = noiseBuffer(ctx, 0.08);
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 6000;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(level * 0.1, at);
+      env.gain.exponentialRampToValueAtTime(0.0001, at + 0.07);
+      shake.connect(hp).connect(env).connect(out);
+      shake.start(at);
+      shake.stop(at + 0.08);
+    };
+    [0, 0.14, 0.21, 0.35, 0.42, 0.56, 0.63].forEach((d, i) => jingle(t + d, i % 2 ? 0.7 : 1));
+
+    // Badalada: fundamental + parcial de sino (2,76x), decaimento longo.
+    [[784, 0.72], [988, 0.9], [1175, 1.08]].forEach(([freq, d], i) => {
+      const at = t + d;
+      const len = i === 2 ? 0.9 : 0.5;
+      for (const [ratio, amp] of [[1, 0.16], [2.76, 0.05], [5.4, 0.02]]) {
+        const osc = ctx.createOscillator();
+        osc.frequency.value = freq * ratio;
+        const env = ctx.createGain();
+        env.gain.setValueAtTime(0.0001, at);
+        env.gain.linearRampToValueAtTime(amp, at + 0.005);
+        env.gain.exponentialRampToValueAtTime(0.0001, at + len / ratio ** 0.3);
+        osc.connect(env).connect(out);
+        osc.start(at);
+        osc.stop(at + len + 0.02);
+      }
+    });
+  },
+
+  // "Ho ho ho": voz grave (dente de serra) passando por ressonâncias de "ô",
+  // com o sopro do "h" na frente de cada sílaba e um eco de salão.
+  hohoho(ctx, out, t) {
+    const voice = ctx.createGain();
+    voice.gain.value = 1;
+    const echo = ctx.createDelay(0.5);
+    echo.delayTime.value = 0.13;
+    const echoLevel = ctx.createGain();
+    echoLevel.gain.value = 0.22;
+    voice.connect(out);
+    voice.connect(echo).connect(echoLevel).connect(out);
+    const formants = [[420, 6, 1], [780, 8, 0.6], [2600, 10, 0.12]];
+
+    const ho = (at, dur, pitch) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(pitch * 1.12, at);
+      osc.frequency.exponentialRampToValueAtTime(pitch, at + 0.06);
+      osc.frequency.exponentialRampToValueAtTime(pitch * 0.82, at + dur);
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, at);
+      env.gain.linearRampToValueAtTime(0.5, at + 0.05);
+      env.gain.setValueAtTime(0.5, at + dur * 0.55);
+      env.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      for (const [freq, q, level] of formants) {
+        const f = ctx.createBiquadFilter();
+        f.type = 'bandpass';
+        f.frequency.value = freq;
+        f.Q.value = q;
+        const g = ctx.createGain();
+        g.gain.value = level;
+        osc.connect(f).connect(g).connect(env);
+      }
+      env.connect(voice);
+      osc.start(at);
+      osc.stop(at + dur + 0.02);
+
+      const breath = ctx.createBufferSource();
+      breath.buffer = noiseBuffer(ctx, 0.1);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1100;
+      bp.Q.value = 0.8;
+      const bEnv = ctx.createGain();
+      bEnv.gain.setValueAtTime(0.0001, at - 0.05);
+      bEnv.gain.linearRampToValueAtTime(0.12, at - 0.01);
+      bEnv.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
+      breath.connect(bp).connect(bEnv).connect(voice);
+      breath.start(at - 0.05);
+      breath.stop(at + 0.06);
+    };
+    ho(t + 0.05, 0.26, 120);
+    ho(t + 0.4, 0.26, 112);
+    ho(t + 0.75, 0.5, 100);
   },
 };
 

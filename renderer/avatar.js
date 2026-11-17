@@ -484,6 +484,9 @@ const AVATAR_NAMES = {
     'hannibal': 'Aníbal do Churrasco', 'lobisomem': 'Lobão da Lua Cheia', 'mumia': 'Faraó Ãozinho', 'predador': 'Predadô do Mato',
     'monitor-apito': 'Monitor do Apito', 'monitor-lanterna': 'Monitora da Lanterna', 'monitor-violao': 'Tio do Violão',
     'monitor-marshmallow': 'Rei do Marshmallow', 'monitor-remo': 'Capitão do Pedalinho',
+    'papai-noel': 'Papai Noel do Paraguai', 'rena-rodolfo': 'Rodolfo Nariz de Farol', 'rena-corisco': 'Corisco do Amigo Secreto',
+    'rena-dancarina': 'Dançarina do Forró', 'rena-cometa': 'Cometa do Pisca-Pisca', 'rena-trovao': 'Trovão do Chocolate Quente',
+    'rena-cupido': 'Cupido do Chocotone',
   },
 };
 const avatarName = (key, value) => AVATAR_NAMES[key]?.[value] ?? value;
@@ -510,7 +513,8 @@ const AVATAR_OPTIONS = {
   item: ['nada', ...allIn('item')],
   costume: ['nada', 'jason', 'myers', 'freddy', 'leatherface', 'ghostface', 'chucky', 'art', 'pinhead', 'pennywise', 'dracula', 'frankenstein', 'sadako',
     'alien', 'jigsaw', 'annabelle', 'valak', 'regan', 'tubarao', 'hannibal', 'lobisomem', 'mumia', 'predador',
-    'monitor-apito', 'monitor-lanterna', 'monitor-violao', 'monitor-marshmallow', 'monitor-remo'],
+    'monitor-apito', 'monitor-lanterna', 'monitor-violao', 'monitor-marshmallow', 'monitor-remo',
+    'papai-noel', 'rena-rodolfo', 'rena-corisco', 'rena-dancarina', 'rena-cometa', 'rena-trovao', 'rena-cupido'],
 };
 
 // Seções do editor de boneco.
@@ -901,9 +905,10 @@ function avatarHead(a, phones = null) {
     ${avatarMarks(a)}
     ${avatarFacial(a)}
     ${avatarBrows(a)}
-    ${avatarTop(a)}
+    ${skin?.hat ? skin.hat(a) : avatarTop(a)}
     ${avatarEyes(a)}
     ${avatarExtra(a)}
+    ${skin?.face?.(a) ?? ''}
     <g class="m-closed">${avatarMouthClosed(a)}</g>
     <g class="m-open">
       <path d="M62 80 Q80 114 98 80 Q80 86 62 80 Z" fill="#3b0d14" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
@@ -2106,6 +2111,148 @@ Object.assign(PREMIUM_SKINS, {
     <rect x="-6" y="-86" width="12" height="8" rx="3" fill="#343a40" stroke="${INK}" stroke-width="1.5"/></g>`),
 });
 
+// Natal: Papai Noel (um por sala) e as renas do trenó. Os dois mantêm o rosto
+// da pessoa: hat troca o chapéu, face vem por cima dos olhos e embaixo da boca
+// (barba e nariz), então a boca continua mexendo quando a pessoa fala.
+// A rédea passa por trás do boneco e sobra um pouco pros lados, então renas
+// lado a lado (e o trenó, primeiro da fila: convoy em events.js) ficam
+// amarradas umas nas outras.
+const XMAS_REIN = `<path d="M-30 124 H190" stroke="${INK}" stroke-width="8"/><path d="M-30 124 H190" stroke="#c92a2a" stroke-width="4.5"/>
+  ${[8, 152].map((x) => `<circle cx="${x}" cy="129" r="4.5" fill="#fcc419" stroke="${INK}" stroke-width="1.5"/>`).join('')}`;
+// Corpo de rena galopando (4 patas, rabo e arreio): a pessoa vira a frente da
+// rena, virada pro lado pra onde o trenó vai (direita).
+const XMAS_REINDEER = {
+  back: XMAS_REIN,
+  front: `<path d="M44 186 L34 204" fill="none" stroke="${INK}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M44 186 L34 204" fill="none" stroke="#8a5a2b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 182 L16 196 L8 194" fill="none" stroke="${INK}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 182 L16 196 L8 194" fill="none" stroke="#8a5a2b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M116 188 L122 206" fill="none" stroke="${INK}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M116 188 L122 206" fill="none" stroke="#8a5a2b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M132 184 L146 200 L154 196" fill="none" stroke="${INK}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M132 184 L146 200 L154 196" fill="none" stroke="#8a5a2b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <ellipse cx="34" cy="204" rx="6" ry="4" fill="#3b2414" stroke="${INK}" stroke-width="2"/><ellipse cx="8" cy="194" rx="6" ry="4" fill="#3b2414" stroke="${INK}" stroke-width="2"/><ellipse cx="122" cy="206" rx="6" ry="4" fill="#3b2414" stroke="${INK}" stroke-width="2"/><ellipse cx="154" cy="196" rx="6" ry="4" fill="#3b2414" stroke="${INK}" stroke-width="2"/>
+    <path d="M14 162 Q-2 152 2 140 Q14 144 18 156 Z" fill="#f1e3c8" stroke="${INK}" stroke-width="2.5"/>
+    <path d="M12 170 Q10 148 42 148 H126 Q156 148 154 172 Q152 192 126 192 H40 Q14 192 12 170 Z" fill="#a0703f" stroke="${INK}" stroke-width="3"/>
+    <path d="M40 184 Q80 194 124 184" fill="none" stroke="#e6c79c" stroke-width="6" stroke-linecap="round"/>
+    ${[[36, 160], [52, 168], [66, 158], [44, 176]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3" fill="#f1e3c8"/>`).join('')}
+    <rect x="104" y="148" width="11" height="44" fill="#c92a2a" stroke="${INK}" stroke-width="2"/>
+    <circle cx="109.5" cy="170" r="5" fill="#fcc419" stroke="${INK}" stroke-width="1.5"/>`,
+};
+// Bolinhas do arreio ao longo da curva do peito.
+const harnessBells = (t) => [0.2, 0.4, 0.6, 0.8].map((s) => {
+  const x = (1 - s) ** 2 * 34 + 2 * (1 - s) * s * 80 + s * s * 126;
+  const y = (1 - s) ** 2 * (t + 16) + 2 * (1 - s) * s * (t + 42) + s * s * (t + 16);
+  return `<circle cx="${x.toFixed(1)}" cy="${(y + 4).toFixed(1)}" r="4.5" fill="#fcc419" stroke="${INK}" stroke-width="1.5"/>
+    <path d="M${(x - 2).toFixed(1)} ${(y + 5).toFixed(1)} H${(x + 2).toFixed(1)}" stroke="${INK}" stroke-width="1.2"/>`;
+}).join('');
+const antler = (flip) => {
+  const tr = flip ? 'transform="translate(160 0) scale(-1 1)"' : '';
+  const d = 'M50 36 Q42 18 32 4 M42 22 Q30 22 22 14 M37 12 Q44 4 44 -4';
+  return `<g ${tr}><path d="${d}" fill="none" stroke="${INK}" stroke-width="9" stroke-linecap="round"/>
+    <path d="${d}" fill="none" stroke="#a0703f" stroke-width="5" stroke-linecap="round"/>
+    <path d="M42 50 Q18 40 12 48 Q20 60 42 56 Z" fill="#a0703f" stroke="${INK}" stroke-width="2.5"/>
+    <path d="M38 52 Q24 46 20 50 Q26 56 38 54 Z" fill="#e6b89c"/></g>`;
+};
+const reindeer = (prop, { red = false } = {}) => ({
+  look: { pants: '#5c3a24' },
+  hairOnly: true,
+  face: () => `${antler(false)}${antler(true)}
+    <path d="M38 50 Q40 22 80 20 Q120 22 122 50" fill="none" stroke="${INK}" stroke-width="7"/>
+    <path d="M38 50 Q40 22 80 20 Q120 22 122 50" fill="none" stroke="#c92a2a" stroke-width="4"/>
+    ${red
+      ? `<circle cx="80" cy="76" r="13" fill="#ff1f3d" opacity=".35"><animate attributeName="opacity" values=".1;.5;.1" dur="1.4s" repeatCount="indefinite"/></circle>
+        <circle cx="80" cy="76" r="8" fill="#ff1f3d" stroke="${INK}" stroke-width="2"/><circle cx="77" cy="73" r="2.4" fill="#fff" opacity=".85"/>`
+      : `<ellipse cx="80" cy="76" rx="8" ry="6.5" fill="#3b2414" stroke="${INK}" stroke-width="2"/><ellipse cx="77.5" cy="73.5" rx="2.2" ry="1.4" fill="#fff" opacity=".6"/>`}`,
+  kit: {
+    main: '#8a5a2b',
+    draw: (a, t) => area('#8a5a2b') + `<ellipse cx="80" cy="${t + 46}" rx="24" ry="34" fill="#c49a6c"/>
+      <path d="M34 ${t + 16} Q80 ${t + 42} 126 ${t + 16}" fill="none" stroke="${INK}" stroke-width="12"/>
+      <path d="M34 ${t + 16} Q80 ${t + 42} 126 ${t + 16}" fill="none" stroke="#c92a2a" stroke-width="8"/>`,
+  },
+  over: (a, t) => harnessBells(t),
+  prop: typeof prop === 'function' ? prop : (a) => {
+    const [hx, hy] = bodyOf(a).hands[1];
+    return `<g transform="translate(${hx} ${hy})">${prop}</g>${skinHand(a)}`;
+  },
+  chair: XMAS_REINDEER,
+});
+
+Object.assign(PREMIUM_SKINS, {
+  'papai-noel': {
+    look: { body: 'gordinho', top: 'nada', facial: 'nada', extra: 'nada', topColor: '#f8f9fa', pants: '#b51f1f' },
+    hat: () => `<path d="M38 50 Q44 10 86 12 Q122 16 136 60 L124 58 Q116 36 100 28 Q112 40 120 50 Z" fill="#d62828" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+      <rect x="34" y="40" width="92" height="15" rx="7.5" fill="#f8f9fa" stroke="${INK}" stroke-width="3"/>
+      <circle cx="132" cy="64" r="9" fill="#f8f9fa" stroke="${INK}" stroke-width="2.5"/>`,
+    face: (a) => `<path d="M38 64 Q36 96 52 112 Q66 130 80 132 Q94 130 108 112 Q124 96 122 64 Q116 82 104 84 Q92 80 80 82 Q68 80 56 84 Q44 82 38 64 Z" fill="#f8f9fa" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M50 108 Q56 116 62 112 M98 112 Q104 116 110 108 M70 124 Q80 130 90 124" fill="none" stroke="#ced4da" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="52" cy="74" r="6" fill="#ff8787" opacity=".5"/><circle cx="108" cy="74" r="6" fill="#ff8787" opacity=".5"/>
+      <path d="M80 79 Q70 72 60 75 Q52 80 58 85 Q70 86 80 81 Q90 86 102 85 Q108 80 100 75 Q90 72 80 79 Z" fill="#f8f9fa" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>
+      <ellipse cx="80" cy="74" rx="7" ry="6" fill="${a.skin}" stroke="${INK}" stroke-width="2"/>
+      <ellipse cx="78" cy="72" rx="2" ry="1.4" fill="#fff" opacity=".6"/>`,
+    kit: {
+      main: '#c92a2a',
+      draw: (a, t) => area('#c92a2a') + `<rect x="72" y="${t}" width="16" height="70" fill="#f8f9fa"/>
+        <path d="M72 ${t} V${t + 70} M88 ${t} V${t + 70}" stroke="#dee2e6" stroke-width="2"/>
+        <rect x="0" y="126" width="160" height="12" fill="#212529"/>
+        <rect x="70" y="123" width="20" height="18" rx="2" fill="none" stroke="#fcc419" stroke-width="3.5"/>
+        <rect x="0" y="146" width="160" height="10" fill="#f8f9fa"/>`,
+    },
+    // Lista dos comportados, desenrolada (ninguém da Baderna está nela).
+    prop: (a) => {
+      const [hx, hy] = bodyOf(a).hands[1];
+      return `<g transform="translate(${hx - 4} ${hy})">
+        <rect x="-14" y="-4" width="20" height="46" fill="#fff3bf" stroke="${INK}" stroke-width="2"/>
+        <text x="-4" y="6" text-anchor="middle" font-family="Permanent Marker" font-size="6" fill="#c92a2a">LISTA</text>
+        <path d="M-10 12 H2 M-10 18 H0 M-10 24 H2 M-10 30 H-1" stroke="#868e96" stroke-width="1.4"/>
+        <path d="M-11 11 l14 6 M-11 23 l13 6" stroke="#c92a2a" stroke-width="1.6"/>
+        <rect x="-16" y="-9" width="24" height="7" rx="3.5" fill="#e9d8a6" stroke="${INK}" stroke-width="1.8"/>
+        <rect x="-16" y="40" width="24" height="7" rx="3.5" fill="#e9d8a6" stroke="${INK}" stroke-width="1.8"/></g>${skinHand(a)}`;
+    },
+    // Trenó virado pra direita, pro lado das renas: esqui enrolando na frente,
+    // saco de presentes atrás. Desenhado de frente pra esquerda e espelhado.
+    // A rédea sai pela direita, rumo às renas.
+    chair: {
+      back: `<path d="M120 124 H190" stroke="${INK}" stroke-width="8"/><path d="M120 124 H190" stroke="#c92a2a" stroke-width="4.5"/>
+        <g transform="translate(160 0) scale(-1 1)"><path d="M106 64 Q92 30 118 14 Q146 22 150 64 Z" fill="#8a5a2b" stroke="${INK}" stroke-width="3"/>
+        <rect x="104" y="6" width="20" height="18" fill="#2f9e44" stroke="${INK}" stroke-width="2" transform="rotate(-12 114 15)"/>
+        <rect x="126" y="0" width="16" height="16" fill="#4dabf7" stroke="${INK}" stroke-width="2" transform="rotate(10 134 8)"/>
+        <path d="M112 6 V24 M131 0 V16" stroke="#fcc419" stroke-width="3" transform="rotate(-2 120 12)"/>
+        <path d="M22 154 V82 Q22 54 52 56 H110 Q140 54 140 84 V154 Z" fill="#b51f1f" stroke="${INK}" stroke-width="3"/>
+        <path d="M32 150 V86 Q32 66 54 66 H108 Q130 66 130 88 V150" fill="none" stroke="#fcc419" stroke-width="3"/></g>`,
+      front: `<g transform="translate(160 0) scale(-1 1)"><path d="M18 202 Q2 202 4 190 Q6 180 16 186 M18 202 H138 Q156 202 156 186" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>
+        <path d="M18 202 Q2 202 4 190 Q6 180 16 186 M18 202 H138 Q156 202 156 186" fill="none" stroke="#fcc419" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M44 188 V202 M116 188 V202" stroke="${INK}" stroke-width="5"/>
+        <path d="M8 150 Q6 188 34 190 H134 Q156 190 156 164 V150 Z" fill="#c92a2a" stroke="${INK}" stroke-width="3"/>
+        <path d="M14 160 H150" stroke="#fcc419" stroke-width="4"/>
+        <path d="M60 176 Q70 168 80 176 Q90 184 100 176" fill="none" stroke="#fcc419" stroke-width="2.5"/></g>`,
+    },
+  },
+
+  // Nariz vermelho que pisca; segura o sino do trenó.
+  'rena-rodolfo': reindeer(`<path d="M0 0 V10" stroke="${INK}" stroke-width="2"/>
+    <path d="M-5 2 L0 6 L5 2" fill="#c92a2a" stroke="${INK}" stroke-width="1.5"/>
+    <path d="M-12 32 Q-12 10 0 10 Q12 10 12 32 Z" fill="#fcc419" stroke="${INK}" stroke-width="2"/>
+    <path d="M-14 32 H14" stroke="${INK}" stroke-width="3" stroke-linecap="round"/><circle cy="35" r="3.5" fill="#e67700" stroke="${INK}" stroke-width="1.2"/>`, { red: true }),
+  // Presente do amigo secreto (é meia).
+  'rena-corisco': reindeer(`<rect x="-14" y="-36" width="26" height="24" fill="#2f9e44" stroke="${INK}" stroke-width="2"/>
+    <rect x="-3" y="-36" width="4" height="24" fill="#fcc419"/><rect x="-14" y="-26" width="26" height="4" fill="#fcc419"/>
+    <path d="M-1 -36 Q-12 -46 -10 -38 Q-8 -34 -1 -36 Q10 -46 8 -38 Q6 -34 -1 -36 Z" fill="#fcc419" stroke="${INK}" stroke-width="1.5"/>`),
+  // Bengala doce listrada.
+  'rena-dancarina': reindeer(`<path d="M0 26 V-44 Q0 -58 12 -58 Q24 -58 24 -46" fill="none" stroke="${INK}" stroke-width="10" stroke-linecap="round"/>
+    <path d="M0 26 V-44 Q0 -58 12 -58 Q24 -58 24 -46" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+    <path d="M0 26 V-44 Q0 -58 12 -58 Q24 -58 24 -46" fill="none" stroke="#e03131" stroke-width="6" stroke-dasharray="5 5"/>`),
+  // Pisca-pisca pendurado da mão, cada lâmpada no seu tempo.
+  'rena-cometa': reindeer(`<path d="M0 0 Q-20 30 -40 14 Q-56 2 -66 26" fill="none" stroke="#2b8a3e" stroke-width="2"/>
+    ${[[-8, 12, '#ff6b6b', 0], [-22, 20, '#ffd43b', 0.3], [-36, 15, '#4dabf7', 0.6], [-50, 8, '#69db7c', 0.9], [-62, 18, '#f783ac', 1.2]].map(([x, y, c, d]) =>
+      `<ellipse cx="${x}" cy="${y + 4}" rx="3.4" ry="5" fill="${c}" stroke="${INK}" stroke-width="1.2"><animate attributeName="opacity" values="1;.25;1" dur="1.5s" begin="${d}s" repeatCount="indefinite"/></ellipse>`).join('')}`),
+  // Caneca de chocolate quente com marshmallow e fumaça.
+  'rena-trovao': reindeer(`<rect x="-12" y="-28" width="20" height="26" rx="3" fill="#c92a2a" stroke="${INK}" stroke-width="2"/>
+    <path d="M8 -22 Q17 -22 17 -15 Q17 -8 8 -8" fill="none" stroke="${INK}" stroke-width="3"/>
+    <ellipse cx="-2" cy="-27" rx="9" ry="2.6" fill="#5c3a24"/><rect x="-6" y="-32" width="7" height="6" rx="2" fill="#fff" stroke="${INK}" stroke-width="1"/>
+    <path d="M-12 -18 H8" stroke="#fff" stroke-width="2" stroke-dasharray="3 3"/>
+    <path d="M-6 -36 Q-10 -42 -6 -48 M2 -36 Q-2 -44 2 -52" fill="none" stroke="#dee2e6" stroke-width="2" stroke-linecap="round" opacity=".7"/>`),
+  // Chocotone (o panetone sem uva-passa, pra não brigar).
+  'rena-cupido': reindeer(`<path d="M-16 -6 V-22 Q-16 -40 0 -40 Q16 -40 16 -22 V-6 Z" fill="#c2803f" stroke="${INK}" stroke-width="2"/>
+    <path d="M-14 -26 Q0 -38 14 -26" fill="none" stroke="#8a5a2b" stroke-width="2"/>
+    ${[[-8, -30], [4, -33], [9, -24], [-3, -24]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.8" fill="#3b2414"/>`).join('')}
+    <path d="M-17 -18 H17 L15 -2 H-15 Z" fill="#fcc419" stroke="${INK}" stroke-width="2"/>
+    <path d="M-10 -18 V-2 M-3 -18 V-2 M4 -18 V-2 M11 -18 V-2" stroke="#e67700" stroke-width="1.5"/>`),
+});
+
 const COSTUMES = Object.keys(PREMIUM_SKINS);
 // Peças internas: fora das categorias, o sanitizeAvatar não deixa chegar de
 // outro peer. A fantasia entra só pelo campo costume.
@@ -2118,18 +2265,26 @@ for (const [id, skin] of Object.entries(PREMIUM_SKINS)) {
   }
 }
 
+// hairOnly: a fantasia põe algo na cabeça (tiara de rena) e tira chapéu e
+// boné, mas deixa o cabelo da pessoa.
+const HAIRSTYLES = AVATAR_CATEGORIES.top[0][1];
 function dressed(a) {
   const skin = PREMIUM_SKINS[a.costume];
-  return skin ? { ...a, symbol: 'nada', item: 'nada', ...skin.look } : a;
+  if (!skin) return a;
+  const out = { ...a, symbol: 'nada', item: 'nada', ...skin.look };
+  if (skin.hairOnly && !HAIRSTYLES.includes(out.top)) out.top = 'nada';
+  return out;
 }
 
 // Sorteia uma fantasia, evitando as que já estão na sala enquanto der. A
-// especial do evento (o mascarado da sexta 13) só sai se ninguém estiver com
-// ela, e com chance de 1 em 3; quem entra junto pode dar dois, e tudo bem.
+// especial do evento (o mascarado da sexta 13, o Papai Noel) só sai se ninguém
+// estiver com ela, com a chance do evento (padrão 1 em 3); quem entra junto
+// pode dar dois, e tudo bem.
 function rollCostume(used = []) {
   const taken = Array.isArray(used) ? used : [];
   const special = ACTIVE_EVENT?.special;
-  if (special && !taken.includes(special) && Math.random() < 1 / 3) return special;
+  const chance = ACTIVE_EVENT?.specialChance ?? 1 / 3;
+  if (special && !taken.includes(special) && Math.random() < chance) return special;
   const pool = (EVENT_COSTUMES ?? COSTUMES).filter((id) => id !== special);
   const free = pool.filter((id) => !taken.includes(id));
   const list = free.length ? free : pool;

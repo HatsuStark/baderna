@@ -2745,9 +2745,14 @@ function renderSelf() {
   });
 }
 
+// Em evento com convoy (Natal), quem está com a fantasia especial (o trenó)
+// vai na frente e o resto segue por ordem de chegada: cada rena nova entra no
+// fim da fila.
 function sortSeats() {
-  const entries = [...state.members.values()].map((m) => [m.seq, m.seat]);
-  if (state.selfSeat) entries.push([state.seq, state.selfSeat]);
+  const lead = ACTIVE_EVENT?.convoy ? ACTIVE_EVENT.special : null;
+  const key = (seq, avatar) => (lead && avatar?.costume === lead ? seq - 1e9 : seq);
+  const entries = [...state.members.values()].map((m) => [key(m.seq, m.avatar), m.seat]);
+  if (state.selfSeat) entries.push([key(state.seq, state.avatar), state.selfSeat]);
   entries.sort((a, b) => a[0] - b[0]);
   for (const [, seat] of entries) $('seats').append(seat);
 }
@@ -2800,6 +2805,10 @@ function layoutSeats() {
   }
   const n = seats.length;
   if (!n) return;
+  if (ACTIVE_EVENT?.convoy) {
+    layoutConvoy(seats, box.clientWidth - 40, stage);
+    return;
+  }
   const { rows, scale, step, squeeze } = pickSeatLayout(n, box.clientWidth - 40, window.innerHeight);
   const perRow = Math.ceil(n / rows);
   seats.forEach((seat, i) => {
@@ -2823,6 +2832,39 @@ function layoutSeats() {
   });
   const h = 22 + (SEAT_H + (rows - 1) * ROW_RISE) * scale;
   stage.style.height = `${Math.round(Math.max(STAGE_MIN_H, Math.min(STAGE_BASE_H, h), rows > 1 ? h : 0))}px`;
+}
+
+// Fila do trenó (evento com convoy, o Natal): o trenó embaixo na ponta e as
+// renas encavaladas subindo em curva, como se decolassem. Cada uma inclina
+// junto com a curva, então as rédeas (no meio de cada cadeira) se emendam.
+// Quem vem antes fica na frente: o trenó cobre o rabo da primeira rena, e
+// assim por diante.
+const CONVOY_STEP = 112; // passo entre bonecos (a cadeira tem 170: sobrepõe)
+const CONVOY_RISE = 28; // quanto cada um sobe em relação ao anterior
+const CONVOY_RISE_MAX = 150;
+
+function layoutConvoy(seats, width, stage) {
+  const n = seats.length;
+  const span = n > 1 ? (width - SEAT_W) / (n - 1) : CONVOY_STEP;
+  const step = Math.min(CONVOY_STEP, span);
+  const scale = Math.min(1, Math.max(0.6, step / (CONVOY_STEP * 0.8)));
+  const rise = Math.min(CONVOY_RISE_MAX, CONVOY_RISE * (n - 1)) * scale;
+  seats.forEach((seat, i) => {
+    const t = n > 1 ? i / (n - 1) : 0;
+    // Curva que começa reta no trenó e vai empinando na ponta.
+    const y = rise * t ** 1.5;
+    const slope = n > 1 ? (rise * 1.5 * Math.sqrt(t)) / ((n - 1) * step) : 0;
+    seat.classList.remove('back');
+    seat.style.setProperty('--x', `${(i - (n - 1) / 2) * step}px`);
+    seat.style.setProperty('--y', `${y}px`);
+    seat.style.setProperty('--s', String(scale));
+    seat.style.setProperty('--sx', '1');
+    seat.style.setProperty('--sy', '1');
+    seat.style.setProperty('--tilt', `${(-Math.atan(slope) * 180) / Math.PI}deg`);
+    seat.style.setProperty('--dim', '1');
+    seat.style.zIndex = String(100 + n - i);
+  });
+  stage.style.height = `${Math.round(Math.max(STAGE_MIN_H, 22 + SEAT_H * scale + rise))}px`;
 }
 
 new ResizeObserver(layoutSeats).observe($('seats'));
@@ -2970,6 +3012,7 @@ function saveAvatar() {
   $('settings-face').innerHTML = avatarFaceSvg(state.avatar);
   if (state.mainPeer) {
     renderSelf();
+    sortSeats();
     broadcast(myProfile());
   }
 }

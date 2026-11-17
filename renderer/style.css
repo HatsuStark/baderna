@@ -32,6 +32,15 @@
   --magenta: #e03131;
 }
 
+/* Natal: vermelho de Papai Noel no destaque, verde de pinheiro, painéis azul-noite. */
+.natal {
+  --panel: rgba(8, 14, 32, .9);
+  --panel-solid: #0b1328;
+  --cyan: #ff5c6c;
+  --cyan-rgb: 255, 92, 108;
+  --magenta: #40c057;
+}
+
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
@@ -901,3 +910,48 @@ label.check input { width: auto; }
   100% { transform: translateX(calc(100vw + 20px)); }
 }
 @keyframes cat-step { 0% { opacity: 1; } 50% { opacity: 0; } }
+
+/* ---------- Neve (Natal) ---------- */
+/* Três camadas de flocos (longe, meio, perto), atrás das janelas e na frente do
+   fundo. Cada camada é um ladrilho repetido e mais alto que a tela, que desce
+   exatamente um ladrilho por volta: o laço fica sem emenda e só mexe transform,
+   então o compositor faz tudo sem repintar. */
+.snow { display: none; }
+.natal .snow { display: block; position: fixed; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; contain: strict; }
+.snow i {
+  position: absolute; left: -40px; right: -40px; will-change: transform;
+  animation: snow-fall var(--dur) linear infinite;
+  top: calc(-1 * var(--tile)); bottom: 0; background-size: var(--tile) var(--tile);
+}
+.snow .s1 {
+  --tile: 240px; --dur: 30s; --sway: 14px; opacity: .55;
+  background-image:
+    radial-gradient(circle at 20px 30px, #fff 1.3px, transparent 2.3px),
+    radial-gradient(circle at 90px 140px, #fff 1.1px, transparent 2.1px),
+    radial-gradient(circle at 160px 60px, #fff 1.4px, transparent 2.4px),
+    radial-gradient(circle at 210px 190px, #fff 1.2px, transparent 2.2px),
+    radial-gradient(circle at 60px 210px, #fff 1px, transparent 2px),
+    radial-gradient(circle at 130px 100px, #fff 1.3px, transparent 2.3px);
+}
+.snow .s2 {
+  --tile: 360px; --dur: 20s; --sway: 24px; opacity: .75;
+  background-image:
+    radial-gradient(circle at 40px 60px, #fff 2.2px, transparent 3.2px),
+    radial-gradient(circle at 200px 30px, #fff 2px, transparent 3px),
+    radial-gradient(circle at 300px 220px, #fff 2.4px, transparent 3.4px),
+    radial-gradient(circle at 120px 300px, #fff 2px, transparent 3px),
+    radial-gradient(circle at 250px 140px, #fff 1.8px, transparent 2.8px);
+}
+.snow .s3 {
+  --tile: 520px; --dur: 13s; --sway: 36px; opacity: .85; filter: blur(1px);
+  background-image:
+    radial-gradient(circle at 80px 120px, #fff 3.6px, transparent 5px),
+    radial-gradient(circle at 380px 60px, #fff 3.2px, transparent 4.6px),
+    radial-gradient(circle at 260px 400px, #fff 4px, transparent 5.4px);
+}
+@keyframes snow-fall {
+  0% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(var(--sway), calc(var(--tile) / 2), 0); }
+  100% { transform: translate3d(0, var(--tile), 0); }
+}
+@media (prefers-reduced-motion: reduce) { .snow i { animation: none; } }
