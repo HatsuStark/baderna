@@ -8,7 +8,7 @@
 //     id: 'natal',                 // também é a classe no <html>: cores em style.css (.natal)
 //     start: [12, 24], end: [12, 26], // [mês, dia], inclusive. Pode virar o ano.
 //     theme: 'natal',              // id de THEMES (themes.js): entra sozinho no lobby e nas salas
-//     costumes: ['papai-noel'],    // ids de PREMIUM_SKINS (avatar.js) e obrigatórias: sorteia ao
+//     costumes: ['maquinista'],    // ids de PREMIUM_SKINS (avatar.js) e obrigatórias: sorteia ao
 //                                  // entrar e o editor só mostra estas. null: boneco normal.
 //     welcome: 'Hoje você é {c}.', // aviso no chat ao entrar; {c} = nome da fantasia
 //     sounds: { join: 'sino', leave: 'sino' }, // ids de EVENT_SOUNDS; sem isso, o bipe normal
@@ -25,29 +25,30 @@
 
 const EVENTS = [
   {
-    // Natal: uma pessoa por sala é o Papai Noel (quem abre a sala, ou o
-    // primeiro a entrar sem ele lá), o resto é rena puxando o trenó.
+    // Natal: o trenzinho. Uma pessoa por sala é o maquinista (quem abre a
+    // sala, ou o primeiro a entrar sem ele lá) e vai na locomotiva; o resto
+    // vai nos vagões de gnomo, boneco de neve, pinheirinho e cia.
     id: 'natal',
     start: [11, 17],
     end: [12, 26],
     theme: 'natal',
-    costumes: ['papai-noel', 'rena-rodolfo', 'rena-corisco', 'rena-dancarina', 'rena-cometa', 'rena-trovao', 'rena-cupido'],
-    special: 'papai-noel',
+    costumes: ['maquinista', 'gnomo-farol', 'gnomo-presente', 'gnomo-bengala', 'gnomo-pisca', 'gnomo-chocolate', 'gnomo-chocotone', 'boneco-neve', 'pinheirinho', 'biscoito', 'quebra-nozes'],
+    special: 'maquinista',
     specialChance: 1,
     convoy: true,
     handoff: {
-      self: '🎅 O Papai Noel foi embora e o trenó ficou com você. Agora você é {c}!',
-      other: '🎅 {n} assumiu o trenó. Ho ho ho!',
+      self: '🚂 O maquinista desceu na estação e a locomotiva ficou com você. Agora você é {c}!',
+      other: '🚂 {n} assumiu a locomotiva. Piuí!',
     },
-    welcome: '🦌 Natal na Baderna! Hoje você é {c}. O trenó não se puxa sozinho.',
-    welcomeSpecial: '🎅 Ho ho ho! Você é {c}. As renas puxam, você só segura a rédea.',
-    sounds: { join: 'sinos', leave: 'hohoho' },
+    welcome: '🎄 Natal na Baderna! Hoje você é {c}. Senta no vagão que o trenzinho já vai sair.',
+    welcomeSpecial: '🚂 Piuí! Você é {c}. Você puxa o trenzinho, a galera vai nos vagões.',
+    sounds: { join: 'sinos', leave: 'piui' },
     narration: {
-      arrived: ['{n} desceu pela chaminé. Cuidado com a churrasqueira.', '{n} chegou de trenó e estacionou no telhado.',
+      arrived: ['{n} desceu pela chaminé. Cuidado com a churrasqueira.', '{n} pegou o trenzinho andando.',
         '{n} chegou trazendo panetone com uva-passa. Ninguém pediu.', '{n} chegou pro amigo secreto sem presente.'],
       left: ['{n} perguntou se era pavê ou pacomê e foi convidado a se retirar.', '{n} foi esquentar o chester.',
         '{n} foi ver se o Papai Noel já passou.', '{n} foi tirar foto com o bom velhinho do shopping.'],
-      dropped: ['{n} caiu do trenó.', 'O pisca-pisca de {n} queimou.', '{n} ficou entalado na chaminé.'],
+      dropped: ['{n} caiu do trenzinho na curva.', 'O pisca-pisca de {n} queimou.', '{n} ficou entalado na chaminé.'],
     },
   },
 
@@ -313,7 +314,7 @@ const EVENT_SOUNDS = {
       ring.stop(hit + decay + 0.02);
     }
   },
-  // Sinos de trenó: chacoalhadas de guizo (parciais metálicos, fora de
+  // Sinos de Natal: chacoalhadas de guizo (parciais metálicos, fora de
   // harmonia) no ritmo do galope, fechando com três badaladas subindo.
   sinos(ctx, out, t) {
     const jingle = (at, level) => {
@@ -364,60 +365,50 @@ const EVENT_SOUNDS = {
     });
   },
 
-  // "Ho ho ho": voz grave (dente de serra) passando por ressonâncias de "ô",
-  // com o sopro do "h" na frente de cada sílaba e um eco de salão.
-  hohoho(ctx, out, t) {
-    const voice = ctx.createGain();
-    voice.gain.value = 1;
-    const echo = ctx.createDelay(0.5);
-    echo.delayTime.value = 0.13;
-    const echoLevel = ctx.createGain();
-    echoLevel.gain.value = 0.22;
-    voice.connect(out);
-    voice.connect(echo).connect(echoLevel).connect(out);
-    const formants = [[420, 6, 1], [780, 8, 0.6], [2600, 10, 0.12]];
-
-    const ho = (at, dur, pitch) => {
-      const osc = ctx.createOscillator();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(pitch * 1.12, at);
-      osc.frequency.exponentialRampToValueAtTime(pitch, at + 0.06);
-      osc.frequency.exponentialRampToValueAtTime(pitch * 0.82, at + dur);
-      const env = ctx.createGain();
-      env.gain.setValueAtTime(0.0001, at);
-      env.gain.linearRampToValueAtTime(0.5, at + 0.05);
-      env.gain.setValueAtTime(0.5, at + dur * 0.55);
-      env.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-      for (const [freq, q, level] of formants) {
-        const f = ctx.createBiquadFilter();
-        f.type = 'bandpass';
-        f.frequency.value = freq;
-        f.Q.value = q;
-        const g = ctx.createGain();
-        g.gain.value = level;
-        osc.connect(f).connect(g).connect(env);
-      }
-      env.connect(voice);
-      osc.start(at);
-      osc.stop(at + dur + 0.02);
-
-      const breath = ctx.createBufferSource();
-      breath.buffer = noiseBuffer(ctx, 0.1);
+  // Apito de trem a vapor: acorde de três tubos (com um leve desafinado entre
+  // eles) soprado com chiado de vapor. Um "piu" curto e um "piuííí" longo que
+  // sobe de leve no começo.
+  piui(ctx, out, t) {
+    const blast = (at, dur) => {
+      const steam = ctx.createBufferSource();
+      steam.buffer = noiseBuffer(ctx, dur + 0.1);
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass';
-      bp.frequency.value = 1100;
-      bp.Q.value = 0.8;
-      const bEnv = ctx.createGain();
-      bEnv.gain.setValueAtTime(0.0001, at - 0.05);
-      bEnv.gain.linearRampToValueAtTime(0.12, at - 0.01);
-      bEnv.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
-      breath.connect(bp).connect(bEnv).connect(voice);
-      breath.start(at - 0.05);
-      breath.stop(at + 0.06);
+      bp.frequency.value = 2400;
+      bp.Q.value = 0.7;
+      const sEnv = ctx.createGain();
+      sEnv.gain.setValueAtTime(0.0001, at);
+      sEnv.gain.linearRampToValueAtTime(0.06, at + 0.03);
+      sEnv.gain.setValueAtTime(0.06, at + dur - 0.08);
+      sEnv.gain.exponentialRampToValueAtTime(0.0001, at + dur + 0.08);
+      steam.connect(bp).connect(sEnv).connect(out);
+      steam.start(at);
+      steam.stop(at + dur + 0.1);
+      for (const [freq, detune] of [[587, 0], [740, 6], [880, -5]]) {
+        const osc = ctx.createOscillator();
+        osc.type = 'triangle';
+        osc.detune.value = detune;
+        osc.frequency.setValueAtTime(freq * 0.94, at);
+        osc.frequency.exponentialRampToValueAtTime(freq, at + 0.09);
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = 6;
+        const depth = ctx.createGain();
+        depth.gain.value = freq * 0.004;
+        lfo.connect(depth).connect(osc.frequency);
+        const env = ctx.createGain();
+        env.gain.setValueAtTime(0.0001, at);
+        env.gain.linearRampToValueAtTime(0.09, at + 0.05);
+        env.gain.setValueAtTime(0.09, at + dur - 0.1);
+        env.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+        osc.connect(env).connect(out);
+        osc.start(at);
+        lfo.start(at);
+        osc.stop(at + dur + 0.02);
+        lfo.stop(at + dur + 0.02);
+      }
     };
-    ho(t + 0.05, 0.26, 120);
-    ho(t + 0.4, 0.26, 112);
-    ho(t + 0.75, 0.5, 100);
+    blast(t + 0.02, 0.28);
+    blast(t + 0.42, 0.9);
   },
 };
 

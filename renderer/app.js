@@ -932,7 +932,7 @@ function removeMember(id, reason) {
   if (lostSpecial) passSpecial();
 }
 
-// Natal: o Papai Noel saiu e ninguém mais está com o trenó, então ele passa
+// Natal: o maquinista saiu e ninguém mais está na locomotiva, então ela passa
 // pra quem chegou primeiro (menor seq). Cada um faz a conta sozinho e todos
 // chegam no mesmo nome; só quem herdou troca a própria fantasia e manda o
 // perfil novo, o resto só avisa no chat.
@@ -2772,8 +2772,8 @@ function renderSelf() {
   });
 }
 
-// Em evento com convoy (Natal), quem está com a fantasia especial (o trenó)
-// vai na frente e o resto segue por ordem de chegada: cada rena nova entra no
+// Em evento com convoy (Natal), quem está com a fantasia especial (a locomotiva)
+// vai na frente e o resto segue por ordem de chegada: cada gnomo novo entra no
 // fim da fila.
 function sortSeats() {
   const lead = ACTIVE_EVENT?.convoy ? ACTIVE_EVENT.special : null;
@@ -2861,20 +2861,21 @@ function layoutSeats() {
   stage.style.height = `${Math.round(Math.max(STAGE_MIN_H, Math.min(STAGE_BASE_H, h), rows > 1 ? h : 0))}px`;
 }
 
-// Fila do trenó (evento com convoy, o Natal): o trenó embaixo na ponta e as
-// renas encavaladas subindo em curva, como se decolassem. Cada uma inclina
+// Trenzinho (evento com convoy, o Natal): a locomotiva embaixo na ponta e os
+// vagões encavalados subindo em curva, como se decolassem. Cada uma inclina
 // junto com a curva, então as rédeas (no meio de cada cadeira) se emendam.
-// Quem vem antes fica na frente: o trenó cobre o rabo da primeira rena, e
+// Quem vem antes fica na frente: a locomotiva cobre o engate do primeiro vagão, e
 // assim por diante.
-const CONVOY_STEP = 146; // passo entre renas (a cadeira tem 170: encosta um pouco)
-const CONVOY_SLEIGH_GAP = 40; // folga a mais entre o trenó e a primeira rena
+const CONVOY_STEP = 146; // passo entre vagões (a cadeira tem 170: encosta um pouco)
+const CONVOY_SLEIGH_GAP = 40; // folga a mais entre a locomotiva e o primeiro vagão
 const CONVOY_RISE = 28; // quanto cada um sobe em relação ao anterior
 const CONVOY_RISE_MAX = 150;
 const CONVOY_RADIO_W = 110; // canto esquerdo do palco é da caixa da rádio
+const CONVOY_NOSE = 60; // a locomotiva passa da cadeira pra esquerda (caldeira e limpa-trilhos)
 
 function layoutConvoy(seats, boxWidth, stage) {
   const n = seats.length;
-  const width = boxWidth - CONVOY_RADIO_W;
+  const width = boxWidth - CONVOY_RADIO_W - CONVOY_NOSE;
   // Sem espaço, passo e folga encolhem juntos (e os bonecos também, até 60%).
   const full = (n - 1) * CONVOY_STEP + (n > 1 ? CONVOY_SLEIGH_GAP : 0);
   const fit = full ? Math.min(1, (width - SEAT_W) / full) : 1;
@@ -2885,10 +2886,10 @@ function layoutConvoy(seats, boxWidth, stage) {
   const length = (n - 1) * step + gap;
   seats.forEach((seat, i) => {
     const t = n > 1 ? i / (n - 1) : 0;
-    // Curva que começa reta no trenó e vai empinando na ponta.
+    // Curva que começa reta na locomotiva e vai empinando na ponta.
     const y = rise * t ** 1.5;
     const slope = n > 1 ? (rise * 1.5 * Math.sqrt(t)) / length : 0;
-    const x = i * step + (i ? gap : 0) - length / 2 + CONVOY_RADIO_W / 2;
+    const x = i * step + (i ? gap : 0) - length / 2 + (CONVOY_RADIO_W + CONVOY_NOSE) / 2;
     seat.classList.remove('back');
     seat.style.setProperty('--x', `${x}px`);
     seat.style.setProperty('--y', `${y}px`);

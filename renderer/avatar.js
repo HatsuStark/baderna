@@ -484,9 +484,10 @@ const AVATAR_NAMES = {
     'hannibal': 'Aníbal do Churrasco', 'lobisomem': 'Lobão da Lua Cheia', 'mumia': 'Faraó Ãozinho', 'predador': 'Predadô do Mato',
     'monitor-apito': 'Monitor do Apito', 'monitor-lanterna': 'Monitora da Lanterna', 'monitor-violao': 'Tio do Violão',
     'monitor-marshmallow': 'Rei do Marshmallow', 'monitor-remo': 'Capitão do Pedalinho',
-    'papai-noel': 'Papai Noel do Paraguai', 'rena-rodolfo': 'Rodolfo Nariz de Farol', 'rena-corisco': 'Corisco do Amigo Secreto',
-    'rena-dancarina': 'Dançarina do Forró', 'rena-cometa': 'Cometa do Pisca-Pisca', 'rena-trovao': 'Trovão do Chocolate Quente',
-    'rena-cupido': 'Cupido do Chocotone',
+    maquinista: 'Maquinista do Piuí', 'gnomo-farol': 'Tonho Nariz de Quentão', 'gnomo-presente': 'Zé do Amigo Secreto',
+    'gnomo-bengala': 'Lelé da Bengala Doce', 'gnomo-pisca': 'Nino do Pisca-Pisca', 'gnomo-chocolate': 'Juca do Chocolate Quente',
+    'gnomo-chocotone': 'Bento do Chocotone', 'boneco-neve': 'Boneco de Neve de Cuiabá', pinheirinho: 'Pinheirinho de Plástico',
+    biscoito: 'Biscoito de Gengibre Mordido', 'quebra-nozes': 'Quebra-Nozes Banguela',
   },
 };
 const avatarName = (key, value) => AVATAR_NAMES[key]?.[value] ?? value;
@@ -514,7 +515,7 @@ const AVATAR_OPTIONS = {
   costume: ['nada', 'jason', 'myers', 'freddy', 'leatherface', 'ghostface', 'chucky', 'art', 'pinhead', 'pennywise', 'dracula', 'frankenstein', 'sadako',
     'alien', 'jigsaw', 'annabelle', 'valak', 'regan', 'tubarao', 'hannibal', 'lobisomem', 'mumia', 'predador',
     'monitor-apito', 'monitor-lanterna', 'monitor-violao', 'monitor-marshmallow', 'monitor-remo',
-    'papai-noel', 'rena-rodolfo', 'rena-corisco', 'rena-dancarina', 'rena-cometa', 'rena-trovao', 'rena-cupido'],
+    'maquinista', 'gnomo-farol', 'gnomo-presente', 'gnomo-bengala', 'gnomo-pisca', 'gnomo-chocolate', 'gnomo-chocotone', 'boneco-neve', 'pinheirinho', 'biscoito', 'quebra-nozes'],
 };
 
 // Seções do editor de boneco.
@@ -2111,146 +2112,236 @@ Object.assign(PREMIUM_SKINS, {
     <rect x="-6" y="-86" width="12" height="8" rx="3" fill="#343a40" stroke="${INK}" stroke-width="1.5"/></g>`),
 });
 
-// Natal: Papai Noel (um por sala) e as renas do trenó. Os dois mantêm o rosto
-// da pessoa: hat troca o chapéu, face vem por cima dos olhos e embaixo da boca
-// (barba e nariz), então a boca continua mexendo quando a pessoa fala.
-// A rédea passa por trás do boneco e sobra um pouco pros lados, então renas
-// lado a lado (e o trenó, primeiro da fila: convoy em events.js) ficam
-// amarradas umas nas outras.
-const XMAS_REIN = `<path d="M-30 124 H190" stroke="${INK}" stroke-width="8"/><path d="M-30 124 H190" stroke="#c92a2a" stroke-width="4.5"/>
-  ${[8, 152].map((x) => `<circle cx="${x}" cy="129" r="4.5" fill="#fcc419" stroke="${INK}" stroke-width="1.5"/>`).join('')}`;
-// Corpo de rena galopando (4 patas, rabo e arreio): a pessoa vira a frente da
-// rena, virada pro lado pra onde o trenó vai (direita).
-const XMAS_REINDEER = {
-  back: XMAS_REIN,
-  front: `<path d="M44 186 L34 204" fill="none" stroke="${INK}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M44 186 L34 204" fill="none" stroke="#8a5a2b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 182 L16 196 L8 194" fill="none" stroke="${INK}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 182 L16 196 L8 194" fill="none" stroke="#8a5a2b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M116 188 L122 206" fill="none" stroke="${INK}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M116 188 L122 206" fill="none" stroke="#8a5a2b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M132 184 L146 200 L154 196" fill="none" stroke="${INK}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M132 184 L146 200 L154 196" fill="none" stroke="#8a5a2b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-    <ellipse cx="34" cy="204" rx="6" ry="4" fill="#3b2414" stroke="${INK}" stroke-width="2"/><ellipse cx="8" cy="194" rx="6" ry="4" fill="#3b2414" stroke="${INK}" stroke-width="2"/><ellipse cx="122" cy="206" rx="6" ry="4" fill="#3b2414" stroke="${INK}" stroke-width="2"/><ellipse cx="154" cy="196" rx="6" ry="4" fill="#3b2414" stroke="${INK}" stroke-width="2"/>
-    <path d="M14 162 Q-2 152 2 140 Q14 144 18 156 Z" fill="#f1e3c8" stroke="${INK}" stroke-width="2.5"/>
-    <path d="M12 170 Q10 148 42 148 H126 Q156 148 154 172 Q152 192 126 192 H40 Q14 192 12 170 Z" fill="#a0703f" stroke="${INK}" stroke-width="3"/>
-    <path d="M40 184 Q80 194 124 184" fill="none" stroke="#e6c79c" stroke-width="6" stroke-linecap="round"/>
-    ${[[36, 160], [52, 168], [66, 158], [44, 176]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3" fill="#f1e3c8"/>`).join('')}
-    <rect x="104" y="148" width="11" height="44" fill="#c92a2a" stroke="${INK}" stroke-width="2"/>
-    <circle cx="109.5" cy="170" r="5" fill="#fcc419" stroke="${INK}" stroke-width="1.5"/>`,
+// Natal: o trenzinho. Uma pessoa por sala é o maquinista (locomotiva na
+// frente da fila: convoy em events.js) e o resto vai nos vagões, fantasiado de
+// gnomo, boneco de neve, pinheirinho, biscoito ou quebra-nozes. Todos mantêm o
+// rosto da pessoa: hat troca o chapéu, face vem por cima dos olhos e embaixo da
+// boca (barba, nariz), então a boca continua mexendo quando a pessoa fala.
+// O engate passa por trás do boneco e sobra pros lados, então vagões lado a
+// lado ficam presos uns nos outros.
+const XMAS_COUPLER = `<path d="M-30 182 H190" stroke="${INK}" stroke-width="8"/><path d="M-30 182 H190" stroke="#868e96" stroke-width="4"/>
+  ${[2, 158].map((x) => `<circle cx="${x}" cy="182" r="5" fill="#495057" stroke="${INK}" stroke-width="2"/>`).join('')}`;
+const trainWheel = (x, y, r) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#343a40" stroke="${INK}" stroke-width="3"/>
+  <path d="M${x - r + 3} ${y} H${x + r - 3} M${x} ${y - r + 3} V${y + r - 3}" stroke="#868e96" stroke-width="2"/>
+  <circle cx="${x}" cy="${y}" r="${r * 0.35}" fill="#fcc419" stroke="${INK}" stroke-width="1.5"/>`;
+// Vagão aberto com festão e bolinhas; a cor muda com a fantasia.
+const xmasWagon = (color) => ({
+  back: XMAS_COUPLER,
+  front: `<rect x="8" y="181" width="144" height="9" fill="#212529" stroke="${INK}" stroke-width="2"/>
+    ${trainWheel(36, 196, 11)}${trainWheel(124, 196, 11)}
+    <path d="M6 156 H154 L148 186 H12 Z" fill="${color}" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M14 164 Q34 178 54 164 Q74 178 94 164 Q114 178 134 164 Q142 170 146 166" fill="none" stroke="#2b8a3e" stroke-width="5" stroke-linecap="round"/>
+    ${[[34, 168, '#ffd43b'], [74, 168, '#f8f9fa'], [114, 168, '#ffd43b']].map(([x, y, c]) => `<circle cx="${x}" cy="${y + 4}" r="4" fill="${c}" stroke="${INK}" stroke-width="1.5"/>`).join('')}
+    <rect x="2" y="148" width="156" height="11" rx="4" fill="#fcc419" stroke="${INK}" stroke-width="2.5"/>`,
+});
+// Locomotiva virada pra esquerda (é a frente da fila): cabine em volta do
+// maquinista, caldeira e chaminé soltando fumaça na frente, limpa-trilhos.
+// O engate de trás sai pela direita, rumo aos vagões.
+const XMAS_ENGINE = {
+  back: `<path d="M120 182 H190" stroke="${INK}" stroke-width="8"/><path d="M120 182 H190" stroke="#868e96" stroke-width="4"/>
+    <rect x="40" y="58" width="122" height="96" fill="#a51d1d" stroke="${INK}" stroke-width="3"/>
+    <rect x="118" y="72" width="32" height="30" rx="3" fill="#ffe066" stroke="${INK}" stroke-width="2.5"/>
+    <path d="M134 72 V102 M118 87 H150" stroke="${INK}" stroke-width="2"/>
+    <rect x="32" y="46" width="138" height="14" rx="4" fill="#212529" stroke="${INK}" stroke-width="3"/>`,
+  front: `<rect x="-44" y="178" width="200" height="10" fill="#212529" stroke="${INK}" stroke-width="2"/>
+    <path d="M-40 178 L-58 204 H-32 Z" fill="#c92a2a" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M-46 188 L-40 204 M-38 184 L-36 204" stroke="${INK}" stroke-width="1.5"/>
+    ${trainWheel(-12, 192, 14)}${trainWheel(24, 192, 14)}${trainWheel(126, 196, 11)}
+    <path d="M-12 198 H24" stroke="#c92a2a" stroke-width="4" stroke-linecap="round"/>
+    <path d="M30 152 H156 V184 H30 Z" fill="#c92a2a" stroke="${INK}" stroke-width="3"/>
+    <path d="M38 162 H150" stroke="#fcc419" stroke-width="4"/>
+    <text x="100" y="180" text-anchor="middle" font-family="Permanent Marker" font-size="13" fill="#fcc419">PIUÍ</text>
+    <rect x="-46" y="132" width="80" height="48" rx="10" fill="#2b8a3e" stroke="${INK}" stroke-width="3"/>
+    <path d="M-24 132 V180 M8 132 V180" stroke="#fcc419" stroke-width="4"/>
+    <ellipse cx="-46" cy="156" rx="8" ry="24" fill="#343a40" stroke="${INK}" stroke-width="3"/>
+    <circle cx="-42" cy="140" r="7" fill="#ffe066" stroke="${INK}" stroke-width="2"/>
+    <path d="M14 132 A10 10 0 0 1 34 132 Z" fill="#fcc419" stroke="${INK}" stroke-width="2.5"/>
+    <path d="M-28 132 V110 L-36 96 H-4 L-12 110 V132 Z" fill="#212529" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    ${[[-20, 80, 9, 0], [-30, 58, 12, 0.6], [-20, 32, 14, 1.2]].map(([x, y, r, d]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#e9ecef" stroke="${INK}" stroke-width="2" opacity=".85">
+      <animate attributeName="opacity" values=".9;.3;.9" dur="1.8s" begin="${d}s" repeatCount="indefinite"/></circle>`).join('')}`,
 };
-// Bolinhas do arreio ao longo da curva do peito.
-const harnessBells = (t) => [0.2, 0.4, 0.6, 0.8].map((s) => {
-  const x = (1 - s) ** 2 * 34 + 2 * (1 - s) * s * 80 + s * s * 126;
-  const y = (1 - s) ** 2 * (t + 16) + 2 * (1 - s) * s * (t + 42) + s * s * (t + 16);
-  return `<circle cx="${x.toFixed(1)}" cy="${(y + 4).toFixed(1)}" r="4.5" fill="#fcc419" stroke="${INK}" stroke-width="1.5"/>
-    <path d="M${(x - 2).toFixed(1)} ${(y + 5).toFixed(1)} H${(x + 2).toFixed(1)}" stroke="${INK}" stroke-width="1.2"/>`;
-}).join('');
-const antler = (flip) => {
-  const tr = flip ? 'transform="translate(160 0) scale(-1 1)"' : '';
-  const d = 'M50 36 Q42 18 32 4 M42 22 Q30 22 22 14 M37 12 Q44 4 44 -4';
-  return `<g ${tr}><path d="${d}" fill="none" stroke="${INK}" stroke-width="9" stroke-linecap="round"/>
-    <path d="${d}" fill="none" stroke="#a0703f" stroke-width="5" stroke-linecap="round"/>
-    <path d="M42 50 Q18 40 12 48 Q20 60 42 56 Z" fill="#a0703f" stroke="${INK}" stroke-width="2.5"/>
-    <path d="M38 52 Q24 46 20 50 Q26 56 38 54 Z" fill="#e6b89c"/></g>`;
+
+// Fantasia do trenzinho: o que vai na mão fica na mão direita.
+const inHand = (art) => (a) => {
+  const [hx, hy] = bodyOf(a).hands[1];
+  return `<g transform="translate(${hx} ${hy})">${art}</g>${skinHand(a)}`;
 };
-const reindeer = (prop, { red = false } = {}) => ({
-  look: { pants: '#5c3a24' },
-  hairOnly: true,
-  face: () => `${antler(false)}${antler(true)}
-    <path d="M38 50 Q40 22 80 20 Q120 22 122 50" fill="none" stroke="${INK}" stroke-width="7"/>
-    <path d="M38 50 Q40 22 80 20 Q120 22 122 50" fill="none" stroke="#c92a2a" stroke-width="4"/>
-    ${red
-      ? `<circle cx="80" cy="76" r="13" fill="#ff1f3d" opacity=".35"><animate attributeName="opacity" values=".1;.5;.1" dur="1.4s" repeatCount="indefinite"/></circle>
-        <circle cx="80" cy="76" r="8" fill="#ff1f3d" stroke="${INK}" stroke-width="2"/><circle cx="77" cy="73" r="2.4" fill="#fff" opacity=".85"/>`
-      : `<ellipse cx="80" cy="76" rx="8" ry="6.5" fill="#3b2414" stroke="${INK}" stroke-width="2"/><ellipse cx="77.5" cy="73.5" rx="2.2" ry="1.4" fill="#fff" opacity=".6"/>`}`,
-  kit: {
-    main: '#8a5a2b',
-    draw: (a, t) => area('#8a5a2b') + `<ellipse cx="80" cy="${t + 46}" rx="24" ry="34" fill="#c49a6c"/>
-      <path d="M34 ${t + 16} Q80 ${t + 42} 126 ${t + 16}" fill="none" stroke="${INK}" stroke-width="12"/>
-      <path d="M34 ${t + 16} Q80 ${t + 42} 126 ${t + 16}" fill="none" stroke="#c92a2a" stroke-width="8"/>`,
-  },
-  over: (a, t) => harnessBells(t),
-  prop: typeof prop === 'function' ? prop : (a) => {
-    const [hx, hy] = bodyOf(a).hands[1];
-    return `<g transform="translate(${hx} ${hy})">${prop}</g>${skinHand(a)}`;
-  },
-  chair: XMAS_REINDEER,
+
+// Gorro de gnomo: cone alto com a ponta caindo pro lado e um pompom.
+const gnomeHat = (hat) => `<path d="M32 56 C36 26 58 -2 88 -4 C112 -4 130 8 138 24 C124 16 112 18 108 28 C106 38 120 48 128 56 Z" fill="${hat}" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M48 40 Q56 14 82 6" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".25"/>
+  <rect x="28" y="44" width="104" height="14" rx="7" fill="${hat}" stroke="${INK}" stroke-width="3"/>
+  <rect x="30" y="46" width="100" height="10" rx="5" fill="#000" opacity=".2"/>
+  <circle cx="140" cy="26" r="7.5" fill="#f8f9fa" stroke="${INK}" stroke-width="2.5"/>`;
+// Barbona pontuda, bigode e narigão (vermelho e piscando no Tonho do quentão).
+const gnomeFace = (beard, red) => (a) => `<path d="M40 66 Q40 98 58 118 Q70 132 80 140 Q90 132 102 118 Q120 98 120 66 Q114 82 102 84 Q92 80 80 82 Q68 80 58 84 Q46 82 40 66 Z" fill="${beard}" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M56 108 Q62 116 68 112 M92 112 Q98 116 104 108 M72 126 Q80 132 88 126" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" opacity=".15"/>
+  <circle cx="52" cy="74" r="6" fill="#ff8787" opacity=".5"/><circle cx="108" cy="74" r="6" fill="#ff8787" opacity=".5"/>
+  <path d="M80 81 Q70 74 60 77 Q52 82 58 87 Q70 88 80 83 Q90 88 102 87 Q108 82 100 77 Q90 74 80 81 Z" fill="${beard}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>
+  ${red
+    ? `<circle cx="80" cy="74" r="15" fill="#ff1f3d" opacity=".35"><animate attributeName="opacity" values=".1;.5;.1" dur="1.4s" repeatCount="indefinite"/></circle>
+      <ellipse cx="80" cy="74" rx="11" ry="10" fill="#e03131" stroke="${INK}" stroke-width="2"/>`
+    : `<ellipse cx="80" cy="74" rx="11" ry="10" fill="${a.skin}" stroke="${INK}" stroke-width="2"/>`}
+  <ellipse cx="76" cy="70" rx="3" ry="2" fill="#fff" opacity=".6"/>`;
+const gnome = ({ hat, coat, wagon, beard = '#f8f9fa', red = false }, prop) => ({
+  look: { facial: 'nada', extra: 'nada', topColor: hat, pants: coat },
+  hat: () => gnomeHat(hat),
+  face: gnomeFace(beard, red),
+  kit: { main: coat, draw: () => area(coat) },
+  prop: inHand(prop),
+  chair: xmasWagon(wagon),
 });
 
 Object.assign(PREMIUM_SKINS, {
-  'papai-noel': {
-    look: { body: 'gordinho', top: 'nada', facial: 'nada', extra: 'nada', topColor: '#f8f9fa', pants: '#b51f1f' },
-    hat: () => `<path d="M38 50 Q44 10 86 12 Q122 16 136 60 L124 58 Q116 36 100 28 Q112 40 120 50 Z" fill="#d62828" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
-      <rect x="34" y="40" width="92" height="15" rx="7.5" fill="#f8f9fa" stroke="${INK}" stroke-width="3"/>
-      <circle cx="132" cy="64" r="9" fill="#f8f9fa" stroke="${INK}" stroke-width="2.5"/>`,
-    face: (a) => `<path d="M38 64 Q36 96 52 112 Q66 130 80 132 Q94 130 108 112 Q124 96 122 64 Q116 82 104 84 Q92 80 80 82 Q68 80 56 84 Q44 82 38 64 Z" fill="#f8f9fa" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
-      <path d="M50 108 Q56 116 62 112 M98 112 Q104 116 110 108 M70 124 Q80 130 90 124" fill="none" stroke="#ced4da" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="52" cy="74" r="6" fill="#ff8787" opacity=".5"/><circle cx="108" cy="74" r="6" fill="#ff8787" opacity=".5"/>
-      <path d="M80 79 Q70 72 60 75 Q52 80 58 85 Q70 86 80 81 Q90 86 102 85 Q108 80 100 75 Q90 72 80 79 Z" fill="#f8f9fa" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>
-      <ellipse cx="80" cy="74" rx="7" ry="6" fill="${a.skin}" stroke="${INK}" stroke-width="2"/>
-      <ellipse cx="78" cy="72" rx="2" ry="1.4" fill="#fff" opacity=".6"/>`,
+  // Quem puxa o trenzinho: boné listrado, macacão jeans e lampião.
+  maquinista: {
+    look: { extra: 'nada', topColor: '#495057', pants: '#1864ab' },
+    hat: () => `<path d="M34 52 Q34 12 80 10 Q126 12 126 52 Z" fill="#1c7ed6"/>
+      <path d="M42 52 V27 L47 22 V52 Z M54 52 V17 L59 15 V52 Z M66 52 V13 L71 12 V52 Z M78 52 V12 L83 12 V52 Z M90 52 V12 L95 13 V52 Z M102 52 V16 L107 18 V52 Z M114 52 V23 L119 28 V52 Z" fill="#f8f9fa"/>
+      <path d="M34 52 Q34 12 80 10 Q126 12 126 52 Z" fill="none" stroke="${INK}" stroke-width="3"/>
+      <path d="M28 48 H126 Q146 50 144 60 H28 Q22 54 28 48 Z" fill="#1864ab" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+      <circle cx="80" cy="14" r="5" fill="#1c7ed6" stroke="${INK}" stroke-width="2"/>`,
     kit: {
       main: '#c92a2a',
-      draw: (a, t) => area('#c92a2a') + `<rect x="72" y="${t}" width="16" height="70" fill="#f8f9fa"/>
-        <path d="M72 ${t} V${t + 70} M88 ${t} V${t + 70}" stroke="#dee2e6" stroke-width="2"/>
-        <rect x="0" y="126" width="160" height="12" fill="#212529"/>
-        <rect x="70" y="123" width="20" height="18" rx="2" fill="none" stroke="#fcc419" stroke-width="3.5"/>
-        <rect x="0" y="146" width="160" height="10" fill="#f8f9fa"/>`,
+      draw: (a, t) => area('#c92a2a') + `<path d="M58 ${t + 10} L80 ${t + 30} L102 ${t + 10} Z" fill="#fcc419" stroke="${INK}" stroke-width="2"/>
+        <rect x="50" y="${t + 34}" width="60" height="90" rx="4" fill="#1864ab" stroke="${INK}" stroke-width="2.5"/>
+        <path d="M54 ${t + 36} L44 ${t} M106 ${t + 36} L116 ${t}" stroke="${INK}" stroke-width="10"/>
+        <path d="M54 ${t + 36} L44 ${t} M106 ${t + 36} L116 ${t}" stroke="#1864ab" stroke-width="6"/>
+        <circle cx="56" cy="${t + 40}" r="3.5" fill="#fcc419" stroke="${INK}" stroke-width="1.2"/><circle cx="104" cy="${t + 40}" r="3.5" fill="#fcc419" stroke="${INK}" stroke-width="1.2"/>
+        <rect x="68" y="${t + 50}" width="24" height="16" rx="2" fill="none" stroke="#a5d8ff" stroke-width="2"/>`,
     },
-    // Lista dos comportados, desenrolada (ninguém da Baderna está nela).
-    prop: (a) => {
-      const [hx, hy] = bodyOf(a).hands[1];
-      return `<g transform="translate(${hx - 4} ${hy})">
-        <rect x="-14" y="-4" width="20" height="46" fill="#fff3bf" stroke="${INK}" stroke-width="2"/>
-        <text x="-4" y="6" text-anchor="middle" font-family="Permanent Marker" font-size="6" fill="#c92a2a">LISTA</text>
-        <path d="M-10 12 H2 M-10 18 H0 M-10 24 H2 M-10 30 H-1" stroke="#868e96" stroke-width="1.4"/>
-        <path d="M-11 11 l14 6 M-11 23 l13 6" stroke="#c92a2a" stroke-width="1.6"/>
-        <rect x="-16" y="-9" width="24" height="7" rx="3.5" fill="#e9d8a6" stroke="${INK}" stroke-width="1.8"/>
-        <rect x="-16" y="40" width="24" height="7" rx="3.5" fill="#e9d8a6" stroke="${INK}" stroke-width="1.8"/></g>${skinHand(a)}`;
-    },
-    // Trenó virado pra direita, pro lado das renas: esqui enrolando na frente,
-    // saco de presentes atrás. Desenhado de frente pra esquerda e espelhado.
-    // A rédea sai pela direita, rumo às renas.
-    chair: {
-      back: `<path d="M120 124 H190" stroke="${INK}" stroke-width="8"/><path d="M120 124 H190" stroke="#c92a2a" stroke-width="4.5"/>
-        <g transform="translate(160 0) scale(-1 1)"><path d="M106 64 Q92 30 118 14 Q146 22 150 64 Z" fill="#8a5a2b" stroke="${INK}" stroke-width="3"/>
-        <rect x="104" y="6" width="20" height="18" fill="#2f9e44" stroke="${INK}" stroke-width="2" transform="rotate(-12 114 15)"/>
-        <rect x="126" y="0" width="16" height="16" fill="#4dabf7" stroke="${INK}" stroke-width="2" transform="rotate(10 134 8)"/>
-        <path d="M112 6 V24 M131 0 V16" stroke="#fcc419" stroke-width="3" transform="rotate(-2 120 12)"/>
-        <path d="M22 154 V82 Q22 54 52 56 H110 Q140 54 140 84 V154 Z" fill="#b51f1f" stroke="${INK}" stroke-width="3"/>
-        <path d="M32 150 V86 Q32 66 54 66 H108 Q130 66 130 88 V150" fill="none" stroke="#fcc419" stroke-width="3"/></g>`,
-      front: `<g transform="translate(160 0) scale(-1 1)"><path d="M18 202 Q2 202 4 190 Q6 180 16 186 M18 202 H138 Q156 202 156 186" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>
-        <path d="M18 202 Q2 202 4 190 Q6 180 16 186 M18 202 H138 Q156 202 156 186" fill="none" stroke="#fcc419" stroke-width="3.5" stroke-linecap="round"/>
-        <path d="M44 188 V202 M116 188 V202" stroke="${INK}" stroke-width="5"/>
-        <path d="M8 150 Q6 188 34 190 H134 Q156 190 156 164 V150 Z" fill="#c92a2a" stroke="${INK}" stroke-width="3"/>
-        <path d="M14 160 H150" stroke="#fcc419" stroke-width="4"/>
-        <path d="M60 176 Q70 168 80 176 Q90 184 100 176" fill="none" stroke="#fcc419" stroke-width="2.5"/></g>`,
-    },
+    // Lampião aceso.
+    prop: inHand(`<path d="M-6 -2 Q0 -14 6 -2" fill="none" stroke="${INK}" stroke-width="2.5"/>
+      <rect x="-10" y="-4" width="20" height="6" rx="2" fill="#212529"/>
+      <circle cx="0" cy="-14" r="16" fill="#ffd43b" opacity=".25"><animate attributeName="opacity" values=".15;.35;.15" dur="2s" repeatCount="indefinite"/></circle>
+      <rect x="-8" y="-28" width="16" height="22" rx="3" fill="#ffe066" stroke="${INK}" stroke-width="2"/>
+      <path d="M0 -12 Q-4 -18 0 -24 Q4 -18 0 -12 Z" fill="#f76707"/>
+      <rect x="-10" y="-34" width="20" height="7" rx="3" fill="#212529" stroke="${INK}" stroke-width="1.5"/>`),
+    chair: XMAS_ENGINE,
   },
 
-  // Nariz vermelho que pisca; segura o sino do trenó.
-  'rena-rodolfo': reindeer(`<path d="M0 0 V10" stroke="${INK}" stroke-width="2"/>
+  // Nariz vermelho de tanto quentão; segura o sino.
+  'gnomo-farol': gnome({ hat: '#d62828', coat: '#2f9e44', wagon: '#1c7ed6', red: true }, `<path d="M0 0 V10" stroke="${INK}" stroke-width="2"/>
     <path d="M-5 2 L0 6 L5 2" fill="#c92a2a" stroke="${INK}" stroke-width="1.5"/>
-    <path d="M-12 32 Q-12 10 0 10 Q12 10 12 32 Z" fill="#fcc419" stroke="${INK}" stroke-width="2"/>
-    <path d="M-14 32 H14" stroke="${INK}" stroke-width="3" stroke-linecap="round"/><circle cy="35" r="3.5" fill="#e67700" stroke="${INK}" stroke-width="1.2"/>`, { red: true }),
+    <path d="M-12 -14 Q-12 -36 0 -36 Q12 -36 12 -14 Z" fill="#fcc419" stroke="${INK}" stroke-width="2"/>
+    <path d="M-14 -14 H14" stroke="${INK}" stroke-width="3" stroke-linecap="round"/><circle cy="-10" r="3.5" fill="#e67700" stroke="${INK}" stroke-width="1.2"/>`),
   // Presente do amigo secreto (é meia).
-  'rena-corisco': reindeer(`<rect x="-14" y="-36" width="26" height="24" fill="#2f9e44" stroke="${INK}" stroke-width="2"/>
+  'gnomo-presente': gnome({ hat: '#2f9e44', coat: '#c92a2a', wagon: '#f59f00' }, `<rect x="-14" y="-36" width="26" height="24" fill="#2f9e44" stroke="${INK}" stroke-width="2"/>
     <rect x="-3" y="-36" width="4" height="24" fill="#fcc419"/><rect x="-14" y="-26" width="26" height="4" fill="#fcc419"/>
     <path d="M-1 -36 Q-12 -46 -10 -38 Q-8 -34 -1 -36 Q10 -46 8 -38 Q6 -34 -1 -36 Z" fill="#fcc419" stroke="${INK}" stroke-width="1.5"/>`),
   // Bengala doce listrada.
-  'rena-dancarina': reindeer(`<path d="M0 26 V-44 Q0 -58 12 -58 Q24 -58 24 -46" fill="none" stroke="${INK}" stroke-width="10" stroke-linecap="round"/>
-    <path d="M0 26 V-44 Q0 -58 12 -58 Q24 -58 24 -46" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
-    <path d="M0 26 V-44 Q0 -58 12 -58 Q24 -58 24 -46" fill="none" stroke="#e03131" stroke-width="6" stroke-dasharray="5 5"/>`),
+  'gnomo-bengala': gnome({ hat: '#1c7ed6', coat: '#c92a2a', wagon: '#2f9e44', beard: '#dee2e6' }, `<path d="M0 10 V-44 Q0 -58 12 -58 Q24 -58 24 -46" fill="none" stroke="${INK}" stroke-width="10" stroke-linecap="round"/>
+    <path d="M0 10 V-44 Q0 -58 12 -58 Q24 -58 24 -46" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+    <path d="M0 10 V-44 Q0 -58 12 -58 Q24 -58 24 -46" fill="none" stroke="#e03131" stroke-width="6" stroke-dasharray="5 5"/>`),
   // Pisca-pisca pendurado da mão, cada lâmpada no seu tempo.
-  'rena-cometa': reindeer(`<path d="M0 0 Q-20 30 -40 14 Q-56 2 -66 26" fill="none" stroke="#2b8a3e" stroke-width="2"/>
-    ${[[-8, 12, '#ff6b6b', 0], [-22, 20, '#ffd43b', 0.3], [-36, 15, '#4dabf7', 0.6], [-50, 8, '#69db7c', 0.9], [-62, 18, '#f783ac', 1.2]].map(([x, y, c, d]) =>
+  'gnomo-pisca': gnome({ hat: '#7048e8', coat: '#2b8a3e', wagon: '#c92a2a' }, `<path d="M0 0 Q-20 -24 -40 -10 Q-56 0 -66 -22" fill="none" stroke="#2b8a3e" stroke-width="2"/>
+    ${[[-8, -14, '#ff6b6b', 0], [-22, -20, '#ffd43b', 0.3], [-36, -14, '#4dabf7', 0.6], [-50, -8, '#69db7c', 0.9], [-62, -18, '#f783ac', 1.2]].map(([x, y, c, d]) =>
       `<ellipse cx="${x}" cy="${y + 4}" rx="3.4" ry="5" fill="${c}" stroke="${INK}" stroke-width="1.2"><animate attributeName="opacity" values="1;.25;1" dur="1.5s" begin="${d}s" repeatCount="indefinite"/></ellipse>`).join('')}`),
   // Caneca de chocolate quente com marshmallow e fumaça.
-  'rena-trovao': reindeer(`<rect x="-12" y="-28" width="20" height="26" rx="3" fill="#c92a2a" stroke="${INK}" stroke-width="2"/>
+  'gnomo-chocolate': gnome({ hat: '#e8590c', coat: '#1864ab', wagon: '#7048e8', beard: '#e8a25a' }, `<rect x="-12" y="-28" width="20" height="26" rx="3" fill="#c92a2a" stroke="${INK}" stroke-width="2"/>
     <path d="M8 -22 Q17 -22 17 -15 Q17 -8 8 -8" fill="none" stroke="${INK}" stroke-width="3"/>
     <ellipse cx="-2" cy="-27" rx="9" ry="2.6" fill="#5c3a24"/><rect x="-6" y="-32" width="7" height="6" rx="2" fill="#fff" stroke="${INK}" stroke-width="1"/>
     <path d="M-12 -18 H8" stroke="#fff" stroke-width="2" stroke-dasharray="3 3"/>
     <path d="M-6 -36 Q-10 -42 -6 -48 M2 -36 Q-2 -44 2 -52" fill="none" stroke="#dee2e6" stroke-width="2" stroke-linecap="round" opacity=".7"/>`),
   // Chocotone (o panetone sem uva-passa, pra não brigar).
-  'rena-cupido': reindeer(`<path d="M-16 -6 V-22 Q-16 -40 0 -40 Q16 -40 16 -22 V-6 Z" fill="#c2803f" stroke="${INK}" stroke-width="2"/>
+  'gnomo-chocotone': gnome({ hat: '#c92a2a', coat: '#5f3dc4', wagon: '#2f9e44' }, `<path d="M-16 -6 V-22 Q-16 -40 0 -40 Q16 -40 16 -22 V-6 Z" fill="#c2803f" stroke="${INK}" stroke-width="2"/>
     <path d="M-14 -26 Q0 -38 14 -26" fill="none" stroke="#8a5a2b" stroke-width="2"/>
     ${[[-8, -30], [4, -33], [9, -24], [-3, -24]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.8" fill="#3b2414"/>`).join('')}
     <path d="M-17 -18 H17 L15 -2 H-15 Z" fill="#fcc419" stroke="${INK}" stroke-width="2"/>
     <path d="M-10 -18 V-2 M-3 -18 V-2 M4 -18 V-2 M11 -18 V-2" stroke="#e67700" stroke-width="1.5"/>`),
+
+  // Boneco de neve: cartola com azevinho, nariz de cenoura, cachecol e botões
+  // de carvão. Segura uma bola de neve pronta pra jogar.
+  'boneco-neve': {
+    look: { facial: 'nada', extra: 'nada', topColor: '#c92a2a', pants: '#f1f3f5' },
+    hat: () => `<rect x="50" y="-4" width="60" height="50" rx="3" fill="#212529" stroke="${INK}" stroke-width="3"/>
+      <rect x="51" y="30" width="58" height="9" fill="#c92a2a"/>
+      <path d="M96 32 Q104 22 112 30 Q104 32 96 32 Z M96 32 Q102 42 112 38 Q104 34 96 32 Z" fill="#2b8a3e" stroke="${INK}" stroke-width="1.5"/>
+      ${[[93, 30], [97, 36], [91, 36]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3" fill="#e03131" stroke="${INK}" stroke-width="1"/>`).join('')}
+      <rect x="32" y="42" width="96" height="12" rx="6" fill="#212529" stroke="${INK}" stroke-width="3"/>
+      <path d="M58 4 V26" stroke="#fff" stroke-width="3" opacity=".2"/>`,
+    face: () => `<path d="M78 70 L114 80 L78 82 Z" fill="#f76707" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M88 73 l2 6 M98 76 l1 4" stroke="#d9480f" stroke-width="1.5"/>
+      <circle cx="52" cy="76" r="6" fill="#ff8787" opacity=".5"/><circle cx="108" cy="76" r="6" fill="#ff8787" opacity=".5"/>`,
+    kit: {
+      main: '#f1f3f5',
+      draw: (a, t) => area('#f1f3f5') + `<path d="M40 ${t + 2} Q80 ${t + 22} 120 ${t + 2} V${t + 16} Q80 ${t + 36} 40 ${t + 16} Z" fill="#c92a2a" stroke="${INK}" stroke-width="2.5"/>
+        <rect x="94" y="${t + 18}" width="16" height="44" rx="3" fill="#c92a2a" stroke="${INK}" stroke-width="2.5" transform="rotate(-8 102 ${t + 18})"/>
+        <path d="M46 ${t + 9} Q80 ${t + 27} 114 ${t + 9}" fill="none" stroke="#f8f9fa" stroke-width="2.5" stroke-dasharray="6 6"/>
+        ${[48, 72, 96].map((y) => `<circle cx="80" cy="${t + y}" r="5.5" fill="#212529"/>`).join('')}`,
+    },
+    prop: inHand(`<circle cx="0" cy="-16" r="13" fill="#f8f9fa" stroke="${INK}" stroke-width="2.5"/>
+      <path d="M-6 -22 Q-2 -26 3 -24" fill="none" stroke="#a5d8ff" stroke-width="2" stroke-linecap="round"/>`),
+    chair: xmasWagon('#1c7ed6'),
+  },
+
+  // Pinheirinho de plástico: copa com bolinhas e estrela na cabeça, festão
+  // dourado no corpo. Segura uma bola de árvore.
+  pinheirinho: {
+    look: { extra: 'nada', topColor: '#2b8a3e', pants: '#2b8a3e' },
+    hat: () => `${[[22, 58, 34, 126], [6, 38, 44, 116], [-2, 20, 54, 106]].map(([top, base, l, r]) =>
+        `<path d="M80 ${top} L${r} ${base} Q80 ${base + 8} ${l} ${base} Z" fill="#2b8a3e" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>`).join('')}
+      ${[[50, 52, '#e03131'], [110, 50, '#ffd43b'], [66, 34, '#4dabf7'], [96, 30, '#e03131'], [80, 16, '#f783ac']].map(([x, y, c]) =>
+        `<circle cx="${x}" cy="${y}" r="4.5" fill="${c}" stroke="${INK}" stroke-width="1.5"/>`).join('')}
+      <path d="M80 -6 L83 1 L90 1 L84 5 L86 12 L80 8 L74 12 L76 5 L70 1 L77 1 Z" fill="#ffd43b" stroke="${INK}" stroke-width="1.5" stroke-linejoin="round"/>`,
+    kit: {
+      main: '#2b8a3e',
+      draw: (a, t) => area('#2b8a3e') + `<path d="M34 ${t + 14} Q80 ${t + 46} 126 ${t + 22} M34 ${t + 54} Q80 ${t + 84} 126 ${t + 60}" fill="none" stroke="#fcc419" stroke-width="5" stroke-dasharray="2 3"/>
+        ${[[56, 40, '#e03131'], [100, 34, '#4dabf7'], [70, 74, '#ffd43b'], [108, 72, '#e03131'], [48, 90, '#f783ac']].map(([x, y, c]) =>
+          `<circle cx="${x}" cy="${t + y}" r="5" fill="${c}" stroke="${INK}" stroke-width="1.5"/>`).join('')}`,
+    },
+    prop: inHand(`<path d="M0 0 V-8" stroke="${INK}" stroke-width="1.5"/>
+      <rect x="-4" y="-12" width="8" height="5" fill="#fcc419" stroke="${INK}" stroke-width="1.2"/>
+      <circle cx="0" cy="-22" r="11" fill="#e03131" stroke="${INK}" stroke-width="2"/>
+      <path d="M-10 -22 Q0 -16 10 -22" fill="none" stroke="#fff" stroke-width="2" opacity=".7"/>
+      <circle cx="-4" cy="-26" r="2.5" fill="#fff" opacity=".7"/>`),
+    chair: xmasWagon('#c92a2a'),
+  },
+
+  // Biscoito de gengibre: capuz de biscoito com glacê, jujubas de botão e um
+  // copo de leite (pro Papai Noel, que não veio).
+  biscoito: {
+    look: { extra: 'nada', topColor: '#b5651d', pants: '#b5651d' },
+    hat: () => `<path d="M28 74 Q24 8 80 6 Q136 8 132 74 L118 72 Q120 24 80 22 Q40 24 42 72 Z" fill="#b5651d" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M34 66 Q32 16 80 14 Q128 16 126 66" fill="none" stroke="#f8f9fa" stroke-width="3" stroke-dasharray="1 6" stroke-linecap="round"/>
+      <path d="M50 12 q6 -6 12 0 q6 6 12 0 q6 -6 12 0 q6 6 12 0" fill="none" stroke="#f8f9fa" stroke-width="3" stroke-linecap="round"/>`,
+    face: () => `<path d="M44 78 q5 -7 10 0 M106 78 q5 -7 10 0" fill="none" stroke="#f8f9fa" stroke-width="2.5" stroke-linecap="round"/>`,
+    kit: {
+      main: '#b5651d',
+      draw: (a, t) => area('#b5651d') + `<path d="M40 ${t + 8} l8 8 l8 -8 l8 8 l8 -8 l8 8 l8 -8 l8 8 l8 -8 l8 8 l8 -8" fill="none" stroke="#f8f9fa" stroke-width="3" stroke-linejoin="round"/>
+        ${[[40, '#e03131'], [64, '#2f9e44'], [88, '#e03131']].map(([y, c]) =>
+          `<path d="M72 ${t + y + 6} Q72 ${t + y - 6} 80 ${t + y - 6} Q88 ${t + y - 6} 88 ${t + y + 6} Z" fill="${c}" stroke="${INK}" stroke-width="2"/>`).join('')}`,
+    },
+    prop: inHand(`<path d="M-10 -36 H10 L8 -2 H-8 Z" fill="#f8f9fa" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M-9 -26 H9" stroke="#dee2e6" stroke-width="2"/>
+      <path d="M-6 -32 V-8" stroke="#fff" stroke-width="2" opacity=".8"/>`),
+    chair: xmasWagon('#f59f00'),
+  },
+
+  // Quebra-nozes: barretão com penacho, bigodão branco, jaqueta vermelha com
+  // talabartes cruzados. Na mão, a noz que ele nunca consegue quebrar.
+  'quebra-nozes': {
+    look: { facial: 'nada', extra: 'nada', topColor: '#f8f9fa', pants: '#212529' },
+    hat: () => `<path d="M104 16 Q118 -6 112 -6 Q104 0 98 14 Z" fill="#e03131" stroke="${INK}" stroke-width="2"/>
+      <path d="M46 52 L50 4 Q80 -6 110 4 L114 52 Z" fill="#212529" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+      <rect x="47" y="38" width="66" height="8" fill="#fcc419"/>
+      <path d="M80 12 L88 22 L80 32 L72 22 Z" fill="#fcc419" stroke="${INK}" stroke-width="1.5"/>
+      <path d="M36 50 H124 Q130 56 124 60 H36 Q30 56 36 50 Z" fill="#212529" stroke="${INK}" stroke-width="3"/>`,
+    face: () => `<path d="M40 62 Q36 92 50 104 L56 86 Q46 80 46 62 Z M120 62 Q124 92 110 104 L104 86 Q114 80 114 62 Z" fill="#f8f9fa" stroke="${INK}" stroke-width="2"/>
+      <path d="M80 82 Q66 72 54 78 Q46 86 54 90 Q68 92 80 85 Q92 92 106 90 Q114 86 106 78 Q94 72 80 82 Z" fill="#f8f9fa" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>
+      <circle cx="52" cy="74" r="7" fill="#ff6b6b" opacity=".6"/><circle cx="108" cy="74" r="7" fill="#ff6b6b" opacity=".6"/>`,
+    kit: {
+      main: '#c92a2a',
+      draw: (a, t) => area('#c92a2a') + `<path d="M40 ${t + 4} L120 ${t + 100} M120 ${t + 4} L40 ${t + 100}" stroke="${INK}" stroke-width="12"/>
+        <path d="M40 ${t + 4} L120 ${t + 100} M120 ${t + 4} L40 ${t + 100}" stroke="#f8f9fa" stroke-width="8"/>
+        <circle cx="80" cy="${t + 52}" r="7" fill="#fcc419" stroke="${INK}" stroke-width="2"/>
+        ${[24, 80].map((y) => `<circle cx="80" cy="${t + y}" r="3.5" fill="#fcc419" stroke="${INK}" stroke-width="1.2"/>`).join('')}
+        <path d="M24 ${t + 4} H52 M108 ${t + 4} H136" stroke="#fcc419" stroke-width="7" stroke-linecap="round"/>`,
+    },
+    prop: inHand(`<ellipse cx="0" cy="-16" rx="12" ry="13" fill="#a0703f" stroke="${INK}" stroke-width="2"/>
+      <path d="M0 -29 Q-4 -16 0 -3 M-6 -24 Q-10 -16 -6 -8 M6 -24 Q10 -16 6 -8" fill="none" stroke="#5c3a24" stroke-width="1.6"/>`),
+    chair: xmasWagon('#2f9e44'),
+  },
 });
 
 const COSTUMES = Object.keys(PREMIUM_SKINS);
@@ -2265,7 +2356,7 @@ for (const [id, skin] of Object.entries(PREMIUM_SKINS)) {
   }
 }
 
-// hairOnly: a fantasia põe algo na cabeça (tiara de rena) e tira chapéu e
+// hairOnly: a fantasia põe algo na cabeça (uma tiara) e tira chapéu e
 // boné, mas deixa o cabelo da pessoa.
 const HAIRSTYLES = AVATAR_CATEGORIES.top[0][1];
 function dressed(a) {
@@ -2277,7 +2368,7 @@ function dressed(a) {
 }
 
 // Sorteia uma fantasia, evitando as que já estão na sala enquanto der. A
-// especial do evento (o mascarado da sexta 13, o Papai Noel) só sai se ninguém
+// especial do evento (o mascarado da sexta 13, o maquinista) só sai se ninguém
 // estiver com ela, com a chance do evento (padrão 1 em 3); quem entra junto
 // pode dar dois, e tudo bem.
 function rollCostume(used = []) {

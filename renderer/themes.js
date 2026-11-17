@@ -177,7 +177,7 @@ const THEMES = {
     },
   },
 
-  // Natal: vila coberta de neve numa noite clara. O trenó cruza a lua devagar,
+  // Natal: vila coberta de neve numa noite clara. Uma estrela cadente risca o céu,
   // as janelas e o pisca-pisca da árvore piscam e sai fumaça das chaminés
   // (SMIL, sem script). A neve caindo é do style.css (.snow), por cima de tudo.
   natal: {
@@ -235,17 +235,12 @@ const THEMES = {
         <circle cx="1100" cy="150" r="260" fill="url(#th-na-halo)"/>
         <circle cx="1100" cy="150" r="78" fill="url(#th-na-moon)"/>
         <circle cx="1076" cy="132" r="12" fill="#e9dcb4" opacity=".6"/><circle cx="1124" cy="176" r="16" fill="#e9dcb4" opacity=".5"/>
-        <g fill="#060b1c">
-          <animateTransform attributeName="transform" type="translate" values="-1700 40;1700 -40" dur="80s" repeatCount="indefinite"/>
-          <g transform="translate(1000 170) scale(.9)">
-            ${[0, 1, 2].map((i) => `<g transform="translate(${i * 46} ${-i * 4})"><ellipse cx="0" cy="0" rx="17" ry="7"/>
-              <path d="M12 -4 L20 -16 L26 -14 L18 -2 Z"/><path d="M20 -16 l-4 -10 M20 -16 l6 -10 M22 -22 l6 -2" stroke="#060b1c" stroke-width="2.5" fill="none"/>
-              <path d="M-12 4 l-4 10 M-6 5 l2 10 M8 5 l-2 10 M12 4 l4 10" stroke="#060b1c" stroke-width="3"/></g>`).join('')}
-            <path d="M-20 0 L-60 6" stroke="#060b1c" stroke-width="2"/>
-            <path d="M-120 -10 H-66 Q-58 -10 -60 2 L-64 14 H-118 Q-126 14 -124 0 Z"/>
-            <path d="M-128 20 H-58 Q-50 20 -52 12" stroke="#060b1c" stroke-width="3" fill="none"/>
-            <circle cx="-96" cy="-20" r="9"/><path d="M-104 -24 Q-96 -40 -84 -30 L-80 -22" stroke="#060b1c" stroke-width="5" fill="none"/>
-          </g>
+        <g opacity="0">
+          <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;.86;.88;.94;1" dur="14s" repeatCount="indefinite"/>
+          <animateTransform attributeName="transform" type="translate" values="0 0;0 0;-420 160;-420 160" keyTimes="0;.86;.94;1" dur="14s" repeatCount="indefinite"/>
+          <path d="M760 80 L900 26" stroke="#fff6d8" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+          <circle cx="760" cy="80" r="3" fill="#fff"/>
+        </g>
         </g>
         <path d="M0 470 Q240 420 520 462 Q800 500 1080 450 Q1280 418 1440 452 V520 H0 Z" fill="#2c4470"/>
         ${farPines}
