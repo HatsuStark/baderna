@@ -18,6 +18,7 @@
 //   special: 'jason',     // fantasia rara: no máximo uma na sala, sorteada 1 em 3 (rollCostume)
 //   specialChance: 1,     // chance da especial quando ninguém está com ela (padrão 1/3)
 //   convoy: true,         // palco em fila única: a especial na frente, o resto por ordem de chegada
+//   handoff: { self, other }, // a especial saiu: passa pra quem chegou primeiro; avisos ({c}, {n})
 //   welcomeSpecial: '…',  // aviso pra quem tirou a especial
 //   narration: { arrived: [...], left: [...], dropped: [...] }, // frases extras do narrador
 // O dia vem do relógio de cada PC, então vale deixar um dia de folga pra fuso.
@@ -34,6 +35,10 @@ const EVENTS = [
     special: 'papai-noel',
     specialChance: 1,
     convoy: true,
+    handoff: {
+      self: '🎅 O Papai Noel foi embora e o trenó ficou com você. Agora você é {c}!',
+      other: '🎅 {n} assumiu o trenó. Ho ho ho!',
+    },
     welcome: '🦌 Natal na Baderna! Hoje você é {c}. O trenó não se puxa sozinho.',
     welcomeSpecial: '🎅 Ho ho ho! Você é {c}. As renas puxam, você só segura a rédea.',
     sounds: { join: 'sinos', leave: 'hohoho' },

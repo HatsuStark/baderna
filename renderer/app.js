@@ -915,8 +915,13 @@ function removeMember(id, reason) {
   renderSoundPanel();
   // Host inalcançável por mim não quer dizer que saiu: os outros ainda o veem.
   if (id === state.hostId && reason !== 'unreachable') handleHostLeft();
+  const lostSpecial = !!ACTIVE_EVENT?.handoff && m.avatar?.costume === ACTIVE_EVENT.special
+    && reason !== 'gone' && reason !== 'unreachable';
   // Nunca chegou a conectar: fantasma some quieto; gente de verdade, um aviso.
-  if (reason === 'gone' || reason === 'kicked') return;
+  if (reason === 'gone' || reason === 'kicked') {
+    if (lostSpecial) passSpecial();
+    return;
+  }
   if (reason === 'unreachable') {
     addSystem(`Não deu pra conectar com ${m.name} (a rede de um de vocês bloqueou).`);
     return;
@@ -924,6 +929,28 @@ function removeMember(id, reason) {
   if (reason !== 'bye') statOf(m.name).drops++;
   playBlip(false);
   addSystem(narrate(reason === 'bye' ? 'left' : 'dropped', { n: m.name }));
+  if (lostSpecial) passSpecial();
+}
+
+// Natal: o Papai Noel saiu e ninguém mais está com o trenó, então ele passa
+// pra quem chegou primeiro (menor seq). Cada um faz a conta sozinho e todos
+// chegam no mesmo nome; só quem herdou troca a própria fantasia e manda o
+// perfil novo, o resto só avisa no chat.
+function passSpecial() {
+  const special = ACTIVE_EVENT.special;
+  const people = [{ id: state.myId, seq: state.seq, name: state.name, avatar: state.avatar }, ...state.members.values()];
+  if (people.some((p) => p.avatar?.costume === special)) return;
+  const heir = people.reduce((a, b) => (b.seq < a.seq ? b : a));
+  if (heir.id !== state.myId) {
+    addSystem(ACTIVE_EVENT.handoff.other.replace('{n}', heir.name));
+    return;
+  }
+  state.avatar = { ...state.avatar, costume: special };
+  renderSelf();
+  sortSeats();
+  $('settings-face').innerHTML = avatarFaceSvg(state.avatar);
+  broadcast(myProfile());
+  addSystem(ACTIVE_EVENT.handoff.self.replace('{c}', avatarName('costume', special)));
 }
 
 // ---------- Chat ----------
@@ -2839,23 +2866,31 @@ function layoutSeats() {
 // junto com a curva, então as rédeas (no meio de cada cadeira) se emendam.
 // Quem vem antes fica na frente: o trenó cobre o rabo da primeira rena, e
 // assim por diante.
-const CONVOY_STEP = 112; // passo entre bonecos (a cadeira tem 170: sobrepõe)
+const CONVOY_STEP = 146; // passo entre renas (a cadeira tem 170: encosta um pouco)
+const CONVOY_SLEIGH_GAP = 40; // folga a mais entre o trenó e a primeira rena
 const CONVOY_RISE = 28; // quanto cada um sobe em relação ao anterior
 const CONVOY_RISE_MAX = 150;
+const CONVOY_RADIO_W = 110; // canto esquerdo do palco é da caixa da rádio
 
-function layoutConvoy(seats, width, stage) {
+function layoutConvoy(seats, boxWidth, stage) {
   const n = seats.length;
-  const span = n > 1 ? (width - SEAT_W) / (n - 1) : CONVOY_STEP;
-  const step = Math.min(CONVOY_STEP, span);
-  const scale = Math.min(1, Math.max(0.6, step / (CONVOY_STEP * 0.8)));
+  const width = boxWidth - CONVOY_RADIO_W;
+  // Sem espaço, passo e folga encolhem juntos (e os bonecos também, até 60%).
+  const full = (n - 1) * CONVOY_STEP + (n > 1 ? CONVOY_SLEIGH_GAP : 0);
+  const fit = full ? Math.min(1, (width - SEAT_W) / full) : 1;
+  const step = CONVOY_STEP * fit;
+  const gap = n > 1 ? CONVOY_SLEIGH_GAP * fit : 0;
+  const scale = Math.min(1, Math.max(0.6, fit / 0.7));
   const rise = Math.min(CONVOY_RISE_MAX, CONVOY_RISE * (n - 1)) * scale;
+  const length = (n - 1) * step + gap;
   seats.forEach((seat, i) => {
     const t = n > 1 ? i / (n - 1) : 0;
     // Curva que começa reta no trenó e vai empinando na ponta.
     const y = rise * t ** 1.5;
-    const slope = n > 1 ? (rise * 1.5 * Math.sqrt(t)) / ((n - 1) * step) : 0;
+    const slope = n > 1 ? (rise * 1.5 * Math.sqrt(t)) / length : 0;
+    const x = i * step + (i ? gap : 0) - length / 2 + CONVOY_RADIO_W / 2;
     seat.classList.remove('back');
-    seat.style.setProperty('--x', `${(i - (n - 1) / 2) * step}px`);
+    seat.style.setProperty('--x', `${x}px`);
     seat.style.setProperty('--y', `${y}px`);
     seat.style.setProperty('--s', String(scale));
     seat.style.setProperty('--sx', '1');
