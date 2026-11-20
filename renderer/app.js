@@ -1534,8 +1534,11 @@ function ladderStep(level) {
   const fps = Math.min(preset.frameRate, step.fps ?? preset.frameRate);
   // Bitrate cresce menos que linear com pixels e fps.
   const factor = Math.max(0.15, (1 / step.scale ** 2) ** 0.75 * (fps / preset.frameRate) ** 0.7);
-  // Rótulo: o que sai de fato, já com a captura reduzida pelo PC pesado.
-  const label = `${Math.round(cap.height / step.scale)}p${Math.min(fps, cap.frameRate)}`;
+  // Rótulo: o que sai de fato. A captura nunca aumenta a tela (1440p numa
+  // tela 1080p sai 1080p), então vale o que a trilha reporta, se for menor.
+  const real = state.screen.stream?.getVideoTracks()[0]?.getSettings?.() ?? {};
+  const height = Math.min(cap.height, real.height || cap.height);
+  const label = `${Math.round(height / step.scale)}p${Math.min(fps, cap.frameRate)}`;
   return { scale: step.scale, fps, factor, label };
 }
 
@@ -1550,7 +1553,11 @@ const LOAD_DOWN_AFTER = 3;        // amostras pesadas seguidas (2 s cada)
 const LOAD_UP_AFTER = 15;         // amostras folgadas seguidas
 const LOAD_UP_HOLD_MS = 30_000;   // espera depois de descer; dobra a cada ida e volta
 const LOAD_CPU_HIGH = 0.9;
-const LOAD_CPU_OK = 0.7;
+const LOAD_CPU_OK = 0.6;          // só conta como folga (pra subir) abaixo disso
+// Subiu e voltou a pesar logo: aquele nível vira teto por um tempo. Sem isso
+// ficava indo e voltando (60↔30 fps) e cada troca congelava quem assiste.
+const LOAD_RELAPSE_MS = 3 * 60_000;
+const LOAD_CEILING_MS = 15 * 60_000;
 const LOAD_ENCODE_BUSY = 0.8;     // tempo de codificar ÷ tempo de um quadro
 const CAPTURE_LADDERS = {
   motion: [{}, { fps: 30 }, { height: 720, fps: 30 }, { height: 540, fps: 24 }],
@@ -1635,12 +1642,20 @@ async function checkPcLoad(screen) {
 
   const top = captureLadder(screen).length - 1;
   const now = Date.now();
+  // Teto: o nível mais alto (menor número) permitido enquanto não vence.
+  const ceiling = now < load.ceilingUntil ? load.ceiling : 0;
   let move = 0;
   if (load.bad >= LOAD_DOWN_AFTER && load.level < top) {
     move = 1;
+    // Acabou de subir pra cá e já pesou: não volta a este nível por um tempo.
+    if (load.lastUp && now - load.lastUp < LOAD_RELAPSE_MS) {
+      load.ceiling = load.level + 1;
+      load.ceilingUntil = now + LOAD_CEILING_MS;
+    }
     load.lastDown = now;
-  } else if (load.good >= LOAD_UP_AFTER && load.level > 0 && now - load.lastDown > LOAD_UP_HOLD_MS * 2 ** load.bounces) {
+  } else if (load.good >= LOAD_UP_AFTER && load.level > ceiling && now - load.lastDown > LOAD_UP_HOLD_MS * 2 ** load.bounces) {
     move = -1;
+    load.lastUp = now;
     if (load.lastDown) load.bounces = Math.min(4, load.bounces + 1);
   }
   if (!move) return;
@@ -1650,6 +1665,7 @@ async function checkPcLoad(screen) {
   const cap = captureOf(screen);
   logEvent(move > 0 ? 'tela: pc pesado, baixou' : 'tela: pc folgou, subiu', {
     captura: `${cap.height}p${cap.frameRate}`,
+    teto: now < load.ceilingUntil ? `${captureLadder(screen)[load.ceiling].height}p${captureLadder(screen)[load.ceiling].frameRate}` : undefined,
     cpu: cpu === null ? undefined : Math.round(cpu * 100),
     codificaMs: +encodeMs.toFixed(1),
     copias: copies,
@@ -1781,7 +1797,7 @@ async function beginShare(stream, presetKey, mode, audio = null) {
   track.contentHint = mode;
   const screen = {
     stream, preset, mode, audio, codecs,
-    load: { level: 0, bad: 0, good: 0, lastDown: 0, bounces: 0, prev: new WeakMap() },
+    load: { level: 0, bad: 0, good: 0, lastDown: 0, lastUp: 0, bounces: 0, ceiling: 0, ceilingUntil: 0, prev: new WeakMap() },
   };
   await applyCapture(screen);
   // Usuário pode parar pelo próprio sistema (ou a janela fechar).
