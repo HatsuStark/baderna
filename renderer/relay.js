@@ -190,12 +190,71 @@ function tuneRelayCall(call) {
         const share = budget
           ? (budget * UPLOAD_HEADROOM - VOICE_RESERVE_BPS * state.members.size) / n - SCREEN_AUDIO_BITRATE
           : ideal;
-        params.encodings[0].maxBitrate = Math.round(Math.max(MIN_SCREEN_BITRATE, Math.min(ideal, share)));
+        const a = adaptOf(sender);
+        a.base = Math.round(Math.max(MIN_SCREEN_BITRATE, Math.min(ideal, share)));
+        applyRelayLevel(params, a, rel.mode);
         params.degradationPreference = rel.mode === 'detail' ? 'maintain-resolution' : 'maintain-framerate';
       });
     }
   }
 }
+
+// ---------- Ajuste automático do repasse ----------
+// Mesmo esquema da transmissão (adaptStep em app.js): cada cópia repassada tem
+// um degrau; CPU ou banda do ajudante apertada por 6 s, desce. Sem isso o
+// ajudante codificava cada cópia na qualidade máxima e, sem dar conta, travava
+// a imagem de quem recebia o repasse e estalava o som dele próprio.
+
+function relayLadder(mode) {
+  return ADAPT_LADDERS[mode === 'detail' ? 'detail' : 'motion'];
+}
+
+// Não sei o fps de origem aqui: o fator de bitrate conta 30 fps como cheio.
+function relayStep(level, mode) {
+  const step = relayLadder(mode)[level];
+  const fpsFactor = step.fps ? Math.min(1, step.fps / 30) ** 0.7 : 1;
+  return { ...step, factor: Math.max(0.15, (1 / step.scale ** 2) ** 0.75 * fpsFactor) };
+}
+
+function applyRelayLevel(params, a, mode) {
+  const step = relayStep(a.level, mode);
+  const enc = params.encodings[0];
+  enc.scaleResolutionDownBy = step.scale;
+  if (step.fps) enc.maxFramerate = step.fps;
+  else delete enc.maxFramerate;
+  enc.maxBitrate = Math.max(MIN_SCREEN_BITRATE, Math.round(a.base * step.factor));
+}
+
+let relayAdapting = false;
+
+async function adaptRelay() {
+  const h = state.helping;
+  if (!h || relayAdapting) return;
+  const rel = state.relays.get(h.streamer);
+  if (!rel) return;
+  relayAdapting = true;
+  try {
+    const top = relayLadder(rel.mode).length - 1;
+    const now = Date.now();
+    for (const [id, call] of h.calls) {
+      const pc = call.peerConnection;
+      if (pc?.connectionState !== 'connected') continue;
+      const sender = pc.getSenders().find((x) => x.track?.kind === 'video');
+      if (!sender) continue;
+      const a = adaptOf(sender);
+      if (!a.base) continue; // tuneRelayCall ainda não passou por aqui
+      const stats = await screenSenderStats(sender);
+      if (state.helping !== h || !stats) continue;
+      if (!adaptStep(a, stats, top, now, (level) => relayStep(level, rel.mode).factor)) continue;
+      logEvent('ajuda: degrau', state.members.get(id)?.name ?? '?', shortId(id), { degrau: a.level, motivo: stats.reason });
+      await updateSender(sender, (params) => applyRelayLevel(params, a, rel.mode));
+    }
+  } finally {
+    relayAdapting = false;
+  }
+}
+
+setInterval(() => adaptRelay().catch((err) => console.warn('adaptRelay', err)), ADAPT_INTERVAL_MS);
 
 // ---------- Mensagens ----------
 

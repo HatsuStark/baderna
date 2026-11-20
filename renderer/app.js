@@ -1543,6 +1543,34 @@ function applyAdaptLevel(params, a) {
   enc.maxBitrate = Math.max(MIN_SCREEN_BITRATE, Math.round(a.base * step.factor));
 }
 
+// Conta a amostra e decide se troca de degrau (mexe em a.level). Devolve
+// true se trocou. factorOf(level): fração do bitrate base naquele degrau.
+// Usado pela transmissão e pelo repasse do ajudante (relay.js).
+function adaptStep(a, stats, top, now, factorOf) {
+  if (stats.limited) {
+    a.bad++;
+    a.good = 0;
+  } else {
+    a.good++;
+    a.bad = 0;
+  }
+  if (a.bad >= ADAPT_DOWN_AFTER && a.level < top) {
+    a.level++;
+    a.bad = 0;
+    a.lastDown = now;
+    return true;
+  }
+  if (a.good >= ADAPT_UP_AFTER && a.level > 0 && now - a.lastDown > ADAPT_UP_HOLD_MS * 2 ** a.bounces) {
+    // Só sobe se a estimativa de banda da conexão comporta o degrau de cima.
+    if (stats.available && stats.available < a.base * factorOf(a.level - 1) * 1.2) return false;
+    a.level--;
+    a.good = 0;
+    if (a.lastDown) a.bounces = Math.min(4, a.bounces + 1);
+    return true;
+  }
+  return false;
+}
+
 async function adaptScreen() {
   const screen = state.screen;
   if (!screen) return;
@@ -1564,28 +1592,7 @@ async function adaptScreen() {
     const stats = await screenSenderStats(sender);
     if (state.screen !== screen) return;
     if (!stats) continue;
-    if (stats.limited) {
-      a.bad++;
-      a.good = 0;
-    } else {
-      a.good++;
-      a.bad = 0;
-    }
-
-    if (a.bad >= ADAPT_DOWN_AFTER && a.level < top) {
-      a.level++;
-      a.bad = 0;
-      a.lastDown = now;
-    } else if (a.good >= ADAPT_UP_AFTER && a.level > 0 && now - a.lastDown > ADAPT_UP_HOLD_MS * 2 ** a.bounces) {
-      const up = ladderStep(a.level - 1);
-      // Só sobe se a estimativa de banda da conexão comporta o degrau de cima.
-      if (stats.available && stats.available < a.base * up.factor * 1.2) continue;
-      a.level--;
-      a.good = 0;
-      if (a.lastDown) a.bounces = Math.min(4, a.bounces + 1);
-    } else {
-      continue;
-    }
+    if (!adaptStep(a, stats, top, now, (level) => ladderStep(level).factor)) continue;
     await updateSender(sender, (params) => applyAdaptLevel(params, a));
     changed = true;
   }
@@ -1740,6 +1747,96 @@ function attachScreenIn(member, call) {
     if (member.screenLive) detachScreenIn(member);
     else closeScreenIn(member);
   });
+}
+
+// ---------- Diagnóstico de quem assiste (vai pro baderna.log) ----------
+// "Trava em tela cheia": a cada 5 s compara as estatísticas da tela recebida.
+// Só registra quando engasga (vídeo congelou, perdeu quadro, som remendado),
+// e um resumo a cada minuto. Dá pra separar rede (perda, jitter) de PC
+// (quadros descartados, decodificador por software) e ver se é só em tela cheia.
+
+const RX_DIAG_MS = 5000;
+const RX_DIAG_SUMMARY_MS = 60_000;
+const rxDiagPrev = new Map(); // id -> último retrato
+let rxDiagTimer = 0;
+let rxDiagLastSummary = 0;
+
+function syncRxDiag() {
+  const any = watchedIds().some((id) => id !== state.myId);
+  if (any && !rxDiagTimer) rxDiagTimer = setInterval(() => rxDiag().catch(() => {}), RX_DIAG_MS);
+  else if (!any && rxDiagTimer) {
+    clearInterval(rxDiagTimer);
+    rxDiagTimer = 0;
+    rxDiagPrev.clear();
+  }
+}
+
+async function rxSnapshot(pc) {
+  const report = await pc.getStats();
+  const snap = { at: performance.now() };
+  report.forEach((r) => {
+    if (r.type === 'inbound-rtp' && r.kind === 'video') {
+      Object.assign(snap, {
+        vDecoded: r.framesDecoded ?? 0, vDropped: r.framesDropped ?? 0,
+        vFreezes: r.freezeCount ?? 0, vFreezeS: r.totalFreezesDuration ?? 0,
+        vLost: r.packetsLost ?? 0, vRecv: r.packetsReceived ?? 0,
+        vDecodeS: r.totalDecodeTime ?? 0, vJbS: r.jitterBufferDelay ?? 0, vJbN: r.jitterBufferEmittedCount ?? 0,
+        w: r.frameWidth, h: r.frameHeight, dec: r.decoderImplementation, hw: r.powerEfficientDecoder,
+      });
+    } else if (r.type === 'inbound-rtp' && r.kind === 'audio') {
+      Object.assign(snap, {
+        aConcealed: r.concealedSamples ?? 0, aSamples: r.totalSamplesReceived ?? 0,
+        aLost: r.packetsLost ?? 0, aJitter: r.jitter,
+      });
+    } else if (r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') {
+      snap.rtt = r.currentRoundTripTime;
+    }
+  });
+  return snap;
+}
+
+async function rxDiag() {
+  const now = performance.now();
+  const summary = now - rxDiagLastSummary >= RX_DIAG_SUMMARY_MS;
+  for (const id of watchedIds()) {
+    if (id === state.myId) continue;
+    const member = state.members.get(id);
+    const pc = member?.screenIn?.peerConnection;
+    if (!pc || pc.connectionState !== 'connected') continue;
+    const cur = await rxSnapshot(pc);
+    const prev = rxDiagPrev.get(id);
+    rxDiagPrev.set(id, cur);
+    if (!prev || cur.vDecoded === undefined) continue;
+    const d = (k) => (cur[k] ?? 0) - (prev[k] ?? 0);
+    const secs = (cur.at - prev.at) / 1000;
+    const decoded = d('vDecoded');
+    const dropped = d('vDropped');
+    const freezes = d('vFreezes');
+    const samples = d('aSamples');
+    const concealPct = samples > 0 ? (100 * d('aConcealed')) / samples : 0;
+    const lost = d('vLost') + d('aLost');
+    const recv = d('vRecv');
+    const bad = freezes > 0 || dropped > decoded * 0.02 || concealPct > 2;
+    if (!bad && !summary) continue;
+    logEvent(bad ? 'tela engasgou' : 'tela ok', shortId(id), {
+      fs: !!document.fullscreenElement,
+      fps: Math.round(decoded / secs),
+      dropped,
+      freezes,
+      freezeMs: Math.round(d('vFreezeS') * 1000),
+      decodeMs: decoded ? +((1000 * d('vDecodeS')) / decoded).toFixed(1) : 0,
+      bufferMs: d('vJbN') ? Math.round((1000 * d('vJbS')) / d('vJbN')) : 0,
+      lostPct: recv + lost > 0 ? +((100 * lost) / (recv + lost)).toFixed(1) : 0,
+      somRemendado: +concealPct.toFixed(1),
+      jitterMs: cur.aJitter !== undefined ? Math.round(cur.aJitter * 1000) : undefined,
+      rttMs: cur.rtt !== undefined ? Math.round(cur.rtt * 1000) : undefined,
+      res: cur.w ? `${cur.w}x${cur.h}` : undefined,
+      dec: cur.dec,
+      hw: cur.hw,
+      oculto: state.windowHidden || undefined,
+    });
+  }
+  if (summary) rxDiagLastSummary = now;
 }
 
 function detachScreenIn(member) {
@@ -2006,6 +2103,7 @@ function renderWatch() {
   $('screen-view').hidden = false;
   updateLiveRail();
   sendWatching();
+  syncRxDiag();
 }
 
 // Avisa a galera o que estou assistindo (o card mostra "👁 fulano").
@@ -2220,6 +2318,7 @@ function closeWatch() {
   $('screen-view').hidden = true;
   updateLiveRail();
   sendWatching();
+  syncRxDiag();
 }
 
 function setScreenLabel(id, label) {
@@ -3495,6 +3594,7 @@ window.addEventListener('keydown', (e) => {
 document.addEventListener('fullscreenchange', () => {
   const fs = document.fullscreenElement;
   document.body.classList.toggle('is-fullscreen', !!fs);
+  logEvent(fs ? 'tela cheia: entrou' : 'tela cheia: saiu', `${screen.width}x${screen.height}@${devicePixelRatio}`);
   // Em tela cheia só o elemento da tela aparece: a fileira de bonecos vai
   // junto pra dentro dele (o mesmo nó, então aura e balanço seguem iguais).
   const stage = document.querySelector('.stage');
