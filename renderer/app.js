@@ -1896,6 +1896,58 @@ function attachScreenIn(member, call) {
   });
 }
 
+// ---------- Vídeo compatível ----------
+// Algumas placas travam o decodificador quando o vídeo vai pra tela cheia
+// (modo "overlay" do Windows): quadro levando 50–300 ms, quadros jogados fora,
+// imagem parada por segundos. Visto 2 vezes na sessão, o app liga sozinho o
+// modo compatível (chave do Chromium, vale ao reabrir) e, até lá, põe uma
+// camada quase invisível sobre o vídeo, que costuma evitar o mesmo modo.
+
+const FS_STALL_DECODE_MS = 40;
+const FS_STALL_DROPPED = 20;
+const FS_STALLS_TO_ENABLE = 2;
+const videoCompat = { enabled: false, active: false, stalls: 0, inStall: false };
+
+function renderVideoCompat() {
+  $('video-compat').checked = videoCompat.enabled;
+  const status = $('video-compat-status');
+  const pending = videoCompat.enabled !== videoCompat.active;
+  status.hidden = !pending;
+  status.textContent = videoCompat.enabled ? 'Liga quando o Baderna for reaberto.' : 'Desliga quando o Baderna for reaberto.';
+  $('screen-view').classList.toggle('fs-compat', videoCompat.enabled || videoCompat.stalls > 0);
+}
+
+async function setVideoCompat(on) {
+  const res = await window.baderna?.setVideoCompat?.(on).catch(() => null);
+  if (res) Object.assign(videoCompat, res);
+  renderVideoCompat();
+}
+
+// Conta episódios (amostras ruins seguidas valem um), não amostras.
+function noteFullscreenDecode(decodeMs, dropped) {
+  const stalled = decodeMs >= FS_STALL_DECODE_MS && dropped >= FS_STALL_DROPPED;
+  if (!stalled) {
+    videoCompat.inStall = false;
+    return;
+  }
+  if (videoCompat.inStall) return;
+  videoCompat.inStall = true;
+  videoCompat.stalls++;
+  logEvent('tela cheia: decodificador travou', { vez: videoCompat.stalls, decodeMs: Math.round(decodeMs), dropped, compat: videoCompat.active });
+  renderVideoCompat(); // paliativo já na primeira vez
+  if (videoCompat.stalls !== FS_STALLS_TO_ENABLE || videoCompat.enabled || videoCompat.active) return;
+  setVideoCompat(true);
+  logEvent('vídeo compatível: ligado sozinho');
+  addSystem('🛠️ Sua tela cheia tava travando. Na próxima vez que abrir o Baderna, ela vai usar o modo de vídeo compatível (dá pra desligar nas configurações).');
+}
+
+window.baderna?.videoCompat?.().then((res) => {
+  if (res) Object.assign(videoCompat, res);
+  if (videoCompat.active) logEvent('vídeo compatível: ativo');
+  renderVideoCompat();
+}).catch(() => {});
+$('video-compat').addEventListener('change', () => setVideoCompat($('video-compat').checked));
+
 // ---------- Diagnóstico de quem assiste (vai pro baderna.log) ----------
 // "Trava em tela cheia": a cada 5 s compara as estatísticas da tela recebida.
 // Só registra quando engasga (vídeo congelou, perdeu quadro, som remendado),
@@ -1954,6 +2006,8 @@ async function rxDiag() {
     const prev = rxDiagPrev.get(id);
     rxDiagPrev.set(id, cur);
     if (!prev || cur.vDecoded === undefined) continue;
+    // Conexão da tela refeita: contadores voltaram do zero; compara na próxima.
+    if (cur.vDecoded < (prev.vDecoded ?? 0)) continue;
     const d = (k) => (cur[k] ?? 0) - (prev[k] ?? 0);
     const secs = (cur.at - prev.at) / 1000;
     const decoded = d('vDecoded');
@@ -1964,14 +2018,17 @@ async function rxDiag() {
     const lost = d('vLost') + d('aLost');
     const recv = d('vRecv');
     const bad = freezes > 0 || dropped > decoded * 0.02 || concealPct > 2;
+    const decodeMs = decoded ? (1000 * d('vDecodeS')) / decoded : 0;
+    if (document.fullscreenElement) noteFullscreenDecode(decodeMs, dropped);
     if (!bad && !summary) continue;
     logEvent(bad ? 'tela engasgou' : 'tela ok', shortId(id), {
       fs: !!document.fullscreenElement,
+      compat: videoCompat.active || undefined,
       fps: Math.round(decoded / secs),
       dropped,
       freezes,
       freezeMs: Math.round(d('vFreezeS') * 1000),
-      decodeMs: decoded ? +((1000 * d('vDecodeS')) / decoded).toFixed(1) : 0,
+      decodeMs: +decodeMs.toFixed(1),
       bufferMs: d('vJbN') ? Math.round((1000 * d('vJbS')) / d('vJbN')) : 0,
       lostPct: recv + lost > 0 ? +((100 * lost) / (recv + lost)).toFixed(1) : 0,
       somRemendado: +concealPct.toFixed(1),

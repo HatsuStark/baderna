@@ -401,6 +401,13 @@ button.chip:disabled { opacity: 1; }
 }
 .screen-view:fullscreen.controls .screen-bar { opacity: 1; pointer-events: auto; }
 .screen-view:fullscreen:not(.controls) { cursor: none; }
+/* Paliativo do vídeo compatível sem reiniciar: uma camada quase invisível
+   sobre o vídeo impede o Windows de mostrá-lo no modo "overlay" (que trava
+   em algumas placas). Abaixo da barra (z 2) e dos bonecos (z 3). */
+.screen-view.fs-compat:fullscreen::after {
+  content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: rgba(0, 0, 0, .01);
+}
 
 /* Tela cheia: só quem está falando aparece, em miniatura no canto inferior
    esquerdo, entrando aos pulos. Dá pra esconder; o botão só aparece com o mouse. */

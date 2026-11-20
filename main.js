@@ -17,6 +17,17 @@ if (profileArg) {
   app.setPath('userData', path.join(app.getPath('userData'), `profile-${profile}`));
 }
 
+// Vídeo compatível: em algumas placas o vídeo em tela cheia trava no modo
+// "overlay" do Windows (decodificador para por segundos). Desligar esse modo
+// resolve, mas é chave do Chromium: só vale ao abrir o app. O renderer liga
+// sozinho quando detecta o travamento; vale a partir da próxima abertura.
+const VIDEO_COMPAT_FILE = path.join(app.getPath('userData'), 'video-compat');
+const videoCompatActive = fs.existsSync(VIDEO_COMPAT_FILE);
+// Nome com sublinhados = contorno de driver do Chromium (aparece em
+// chrome://gpu como "Supports overlays: false"). A chave com hífens
+// (disable-direct-composition-video-overlays) não faz mais nada no Electron 45.
+if (videoCompatActive) app.commandLine.appendSwitch('disable_direct_composition_video_overlays');
+
 // Uma instância só: abrir o atalho com o app na bandeja traz a janela de
 // volta. Perfis de teste (--profile) ficam livres pra abrir várias.
 const gotLock = !!profileArg || app.requestSingleInstanceLock();
@@ -250,6 +261,18 @@ function installUpdate() {
 ipcMain.on('update:install', installUpdate);
 ipcMain.handle('update:status', () => updateReady);
 ipcMain.handle('app:version', () => app.getVersion());
+
+// enabled: ligado pra próxima abertura · active: valendo nesta abertura.
+ipcMain.handle('video-compat:get', () => ({ enabled: fs.existsSync(VIDEO_COMPAT_FILE), active: videoCompatActive }));
+ipcMain.handle('video-compat:set', (_e, on) => {
+  try {
+    if (on) fs.writeFileSync(VIDEO_COMPAT_FILE, new Date().toISOString());
+    else fs.rmSync(VIDEO_COMPAT_FILE, { force: true });
+  } catch (err) {
+    console.warn('video-compat', err);
+  }
+  return { enabled: fs.existsSync(VIDEO_COMPAT_FILE), active: videoCompatActive };
+});
 
 // Uso total da CPU do PC (0–1) desde a última pergunta. Quem transmite usa
 // pra baixar a captura quando o PC está pesado (jogo aberto, etc.).

@@ -36,4 +36,6 @@ contextBridge.exposeInMainWorld('baderna', {
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   appVersion: () => ipcRenderer.invoke('app:version'),
   cpuLoad: () => ipcRenderer.invoke('sys:cpu'),
+  videoCompat: () => ipcRenderer.invoke('video-compat:get'),
+  setVideoCompat: (on) => ipcRenderer.invoke('video-compat:set', !!on),
 });
