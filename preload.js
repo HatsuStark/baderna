@@ -35,4 +35,5 @@ contextBridge.exposeInMainWorld('baderna', {
   installUpdate: () => ipcRenderer.send('update:install'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   appVersion: () => ipcRenderer.invoke('app:version'),
+  cpuLoad: () => ipcRenderer.invoke('sys:cpu'),
 });

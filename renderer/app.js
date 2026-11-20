@@ -1307,12 +1307,13 @@ function sanitizeCodecOrder(list) {
   return [...new Set([...known, ...CODEC_FALLBACK_ORDER])];
 }
 
-// Melhor codec com encoder na placa; sem placa, VP9 por software (se a CPU
-// aguentar) ou H.264 na placa.
+// Primeiro os codecs que a placa codifica (do mais eficiente pro menos); sem
+// placa, VP8, o mais leve por software. Quem transmite codifica uma cópia por
+// pessoa, então AV1/H.265/VP9 por software (pesados) ficam por último: só
+// entram se o outro lado não aceitar nenhum dos de cima.
 function videoCodecOrder(hw) {
-  const first = ['AV1', 'H265'].find((c) => hw[c])
-    ?? (navigator.hardwareConcurrency >= 8 || !hw.H264 ? 'VP9' : 'H264');
-  return sanitizeCodecOrder([first]);
+  const inHw = ['AV1', 'H265', 'H264'].filter((c) => hw[c]);
+  return sanitizeCodecOrder([...inHw, 'VP8', 'H264', 'VP9']);
 }
 
 function ensureCodecOrder() {
@@ -1528,11 +1529,134 @@ function adaptLadder() {
 
 function ladderStep(level) {
   const { preset } = state.screen;
+  const cap = captureOf(state.screen);
   const step = adaptLadder()[level];
   const fps = Math.min(preset.frameRate, step.fps ?? preset.frameRate);
   // Bitrate cresce menos que linear com pixels e fps.
   const factor = Math.max(0.15, (1 / step.scale ** 2) ** 0.75 * (fps / preset.frameRate) ** 0.7);
-  return { scale: step.scale, fps, factor, label: `${Math.round(preset.height / step.scale)}p${fps}` };
+  // Rótulo: o que sai de fato, já com a captura reduzida pelo PC pesado.
+  const label = `${Math.round(cap.height / step.scale)}p${Math.min(fps, cap.frameRate)}`;
+  return { scale: step.scale, fps, factor, label };
+}
+
+// ---------- PC pesado (quem transmite) ----------
+// Os degraus acima são por cópia. Aqui olha o PC inteiro: CPU total alta
+// (jogo aberto etc.), codificador demorando perto do tempo de um quadro ou
+// metade das cópias limitadas por CPU. Pesado por 6 s, baixa a própria
+// captura (fps, depois resolução): alivia a captura e todos os codificadores
+// de uma vez. Folgado por um tempo, volta subindo um degrau por vez.
+
+const LOAD_DOWN_AFTER = 3;        // amostras pesadas seguidas (2 s cada)
+const LOAD_UP_AFTER = 15;         // amostras folgadas seguidas
+const LOAD_UP_HOLD_MS = 30_000;   // espera depois de descer; dobra a cada ida e volta
+const LOAD_CPU_HIGH = 0.9;
+const LOAD_CPU_OK = 0.7;
+const LOAD_ENCODE_BUSY = 0.8;     // tempo de codificar ÷ tempo de um quadro
+const CAPTURE_LADDERS = {
+  motion: [{}, { fps: 30 }, { height: 720, fps: 30 }, { height: 540, fps: 24 }],
+  detail: [{}, { fps: 15 }, { fps: 10 }, { height: 720, fps: 10 }],
+};
+
+// Degraus que mudam algo pra esta qualidade (1080p30 não tem "baixar pra 30").
+function captureLadder(screen) {
+  const { preset } = screen;
+  const out = [];
+  for (const step of CAPTURE_LADDERS[screen.mode === 'detail' ? 'detail' : 'motion']) {
+    const height = Math.min(preset.height, step.height ?? preset.height);
+    const frameRate = Math.min(preset.frameRate, step.fps ?? preset.frameRate);
+    const last = out[out.length - 1];
+    if (last && last.height === height && last.frameRate === frameRate) continue;
+    out.push({ width: Math.round((height * preset.width) / preset.height), height, frameRate });
+  }
+  return out;
+}
+
+function captureOf(screen) {
+  const ladder = captureLadder(screen);
+  return ladder[Math.min(screen.load?.level ?? 0, ladder.length - 1)];
+}
+
+async function applyCapture(screen) {
+  const cap = captureOf(screen);
+  const track = screen.stream.getVideoTracks()[0];
+  try {
+    await track.applyConstraints({
+      width: { max: cap.width }, height: { max: cap.height }, frameRate: { max: cap.frameRate },
+    });
+  } catch (err) {
+    console.warn('applyConstraints', err);
+  }
+}
+
+async function checkPcLoad(screen) {
+  const load = screen.load;
+  const cpu = await window.baderna?.cpuLoad?.().catch(() => null);
+  if (state.screen !== screen) return;
+  const frameMs = 1000 / captureOf(screen).frameRate;
+  let copies = 0;
+  let cpuLimited = 0;
+  let encodeMs = 0;
+  for (const m of state.members.values()) {
+    const pc = m.screenOut?.peerConnection;
+    if (pc?.connectionState !== 'connected') continue;
+    const sender = pc.getSenders().find((x) => x.track?.kind === 'video');
+    if (!sender || sender.getParameters().encodings?.[0]?.active === false) continue;
+    const report = await sender.getStats().catch(() => null);
+    if (state.screen !== screen) return;
+    let out = null;
+    report?.forEach((r) => { if (r.type === 'outbound-rtp' && r.kind === 'video') out = r; });
+    if (!out) continue;
+    copies++;
+    if (out.qualityLimitationReason === 'cpu') cpuLimited++;
+    const prev = load.prev.get(sender);
+    const cur = { frames: out.framesEncoded ?? 0, time: out.totalEncodeTime ?? 0 };
+    load.prev.set(sender, cur);
+    if (prev && cur.frames > prev.frames) {
+      encodeMs = Math.max(encodeMs, (1000 * (cur.time - prev.time)) / (cur.frames - prev.frames));
+    }
+  }
+  if (!copies) {
+    load.bad = 0;
+    load.good = 0;
+    return;
+  }
+  const encodeBusy = encodeMs > frameMs * LOAD_ENCODE_BUSY;
+  const heavy = (cpu ?? 0) >= LOAD_CPU_HIGH || encodeBusy || cpuLimited * 2 >= copies;
+  const calm = !heavy && (cpu ?? 0) < LOAD_CPU_OK;
+  if (heavy) {
+    load.bad++;
+    load.good = 0;
+  } else if (calm) {
+    load.good++;
+    load.bad = 0;
+  } else {
+    load.bad = 0;
+  }
+
+  const top = captureLadder(screen).length - 1;
+  const now = Date.now();
+  let move = 0;
+  if (load.bad >= LOAD_DOWN_AFTER && load.level < top) {
+    move = 1;
+    load.lastDown = now;
+  } else if (load.good >= LOAD_UP_AFTER && load.level > 0 && now - load.lastDown > LOAD_UP_HOLD_MS * 2 ** load.bounces) {
+    move = -1;
+    if (load.lastDown) load.bounces = Math.min(4, load.bounces + 1);
+  }
+  if (!move) return;
+  load.level += move;
+  load.bad = 0;
+  load.good = 0;
+  const cap = captureOf(screen);
+  logEvent(move > 0 ? 'tela: pc pesado, baixou' : 'tela: pc folgou, subiu', {
+    captura: `${cap.height}p${cap.frameRate}`,
+    cpu: cpu === null ? undefined : Math.round(cpu * 100),
+    codificaMs: +encodeMs.toFixed(1),
+    copias: copies,
+    limitadasCpu: cpuLimited,
+  });
+  await applyCapture(screen);
+  if (state.screen === screen) updateShareLabel();
 }
 
 function applyAdaptLevel(params, a) {
@@ -1573,7 +1697,19 @@ function adaptStep(a, stats, top, now, factorOf) {
 
 async function adaptScreen() {
   const screen = state.screen;
-  if (!screen) return;
+  if (!screen || screen.adapting) return;
+  screen.adapting = true;
+  try {
+    await checkPcLoad(screen);
+    if (state.screen === screen) await adaptCopies(screen);
+  } catch (err) {
+    console.warn('adaptScreen', err);
+  } finally {
+    screen.adapting = false;
+  }
+}
+
+async function adaptCopies(screen) {
   const now = Date.now();
   const top = adaptLadder().length - 1;
   let changed = false;
@@ -1622,7 +1758,7 @@ function updateShareEstimate() {
     return;
   }
   const preset = SHARE_PRESETS[$('share-quality').value];
-  const codec = state.codecOrder?.[0] ?? 'VP9';
+  const codec = state.codecOrder?.[0] ?? 'VP8';
   const budgetMbps = Number($('share-upload').value);
   const budget = budgetMbps > 0 ? budgetMbps * 1e6 : 0;
   const withAudio = $('share-audio').checked;
@@ -1643,23 +1779,18 @@ async function beginShare(stream, presetKey, mode, audio = null) {
   const preset = SHARE_PRESETS[presetKey] ?? SHARE_PRESETS['1080p30'];
   const track = stream.getVideoTracks()[0];
   track.contentHint = mode;
-  try {
-    await track.applyConstraints({
-      width: { max: preset.width },
-      height: { max: preset.height },
-      frameRate: { max: preset.frameRate },
-    });
-  } catch (err) {
-    console.warn('applyConstraints', err);
-  }
+  const screen = {
+    stream, preset, mode, audio, codecs,
+    load: { level: 0, bad: 0, good: 0, lastDown: 0, bounces: 0, prev: new WeakMap() },
+  };
+  await applyCapture(screen);
   // Usuário pode parar pelo próprio sistema (ou a janela fechar).
   track.addEventListener('ended', stopShare);
 
-  state.screen = {
-    stream, preset, mode, audio, codecs,
+  state.screen = Object.assign(screen, {
     adaptTimer: setInterval(adaptScreen, ADAPT_INTERVAL_MS),
     previewTimer: setInterval(sharePreview, PREVIEW_MS),
-  };
+  });
   setTimeout(sharePreview, 600); // primeira foto logo que a imagem chega
   broadcast({ type: 'screen-live' });
   for (const m of state.members.values()) syncScreenOut(m);

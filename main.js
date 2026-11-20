@@ -251,6 +251,27 @@ ipcMain.on('update:install', installUpdate);
 ipcMain.handle('update:status', () => updateReady);
 ipcMain.handle('app:version', () => app.getVersion());
 
+// Uso total da CPU do PC (0–1) desde a última pergunta. Quem transmite usa
+// pra baixar a captura quando o PC está pesado (jogo aberto, etc.).
+let lastCpuTimes = null;
+function cpuTotals() {
+  let idle = 0;
+  let total = 0;
+  for (const c of require('os').cpus()) {
+    const t = c.times;
+    idle += t.idle;
+    total += t.user + t.nice + t.sys + t.irq + t.idle;
+  }
+  return { idle, total };
+}
+ipcMain.handle('sys:cpu', () => {
+  const now = cpuTotals();
+  const prev = lastCpuTimes;
+  lastCpuTimes = now;
+  if (!prev || now.total <= prev.total) return null;
+  return 1 - (now.idle - prev.idle) / (now.total - prev.total);
+});
+
 // Verificação pedida pelo botão das configurações. Achando versão nova, o
 // download segue sozinho (autoDownload) e o aviso chega por 'update:ready'.
 ipcMain.handle('update:check', async () => {
