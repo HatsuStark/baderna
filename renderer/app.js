@@ -619,10 +619,11 @@ function attachConn(member, conn) {
     sendMoviesTo(member);
     radioConnOpen(member, conn);
     conn.send({ type: 'watching', ids: [...state.tuned] });
-    conn.send({ type: 'caps', ondemand: true, sounds: true, relay: true });
+    conn.send({ type: 'caps', ondemand: true, sounds: true, relay: true, sfu: state.sfuAvailable });
     if (state.screen) {
       conn.send({ type: 'screen-live' });
       if (state.previews.has(state.myId)) conn.send({ type: 'preview', img: state.previews.get(state.myId) });
+      sfuGreet(member); // sfu.js
     }
     // Quem chega depois também vê a tela que já está rolando. Espera o 'caps'
     // chegar: versão nova só recebe vídeo quando abrir; versão antiga, já.
@@ -841,7 +842,11 @@ function handleMessage(member, msg) {
     case 'caps':
       member.onDemand = !!msg.ondemand;
       member.relayOk = !!msg.relay;
-      if (state.screen) syncScreenOut(member);
+      member.sfuOk = !!msg.sfu;
+      if (state.screen) {
+        syncScreenOut(member);
+        updateSfu();
+      }
       member.soundsOk = !!msg.sounds;
       if (member.soundsOk) sendSoundsTo(member);
       break;
@@ -860,6 +865,7 @@ function handleMessage(member, msg) {
         relayWatchingChanged(member);
         syncScreenOut(member);
         retuneScreen();
+        updateSfu();
       }
       break;
     case 'preview':
@@ -867,6 +873,10 @@ function handleMessage(member, msg) {
       break;
     case 'mod':
       handleModMessage(member, msg);
+      break;
+    case 'screen-sfu':
+    case 'sfu-rx':
+      handleSfuMessage(member, msg); // sfu.js
       break;
     case 'relay':
     case 'relay-offer':
@@ -908,6 +918,7 @@ function removeMember(id, reason) {
   updateCount();
   logEvent('saiu da lista', m.name, shortId(id), reason ?? 'caiu');
   if (state.leaving) return;
+  if (state.screen?.sfu?.rx.delete(id) !== undefined) updateSfu();
   relayMemberGone(id, m.name);
   radioMemberGone(m);
   if (personMenuFor === m) closePersonMenu();
@@ -1490,9 +1501,10 @@ function updateShareLabel() {
     total += enc?.maxBitrate ?? 0;
     best = Math.min(best, adaptOf(sender).level);
   }
-  setScreenLabel(state.myId, Number.isFinite(best)
+  const viaSfu = state.screen.sfu?.ready && !state.screen.sfu.ending ? ' · servidor' : '';
+  setScreenLabel(state.myId, (Number.isFinite(best)
     ? `${ladderStep(best).label}, ${mbps(total)} Mbps`
-    : ladderStep(0).label);
+    : ladderStep(0).label) + viaSfu);
 }
 
 // ---------- Ajuste automático da tela ----------
@@ -1856,12 +1868,14 @@ async function beginShare(stream, presetKey, mode, audio = null) {
   for (const m of state.members.values()) syncScreenOut(m);
   registerScreen(state.myId, 'Sua tela', stream, false);
   addSystem('Você começou a compartilhar a tela.');
+  updateSfu(); // sfu.js
   updateDock();
   renderSelf();
 }
 
 function stopShare() {
   if (!state.screen) return;
+  sfuStopShare(state.screen);
   const { stream, audio, adaptTimer, previewTimer } = state.screen;
   clearInterval(adaptTimer);
   clearInterval(previewTimer);
@@ -1888,6 +1902,16 @@ function syncScreenOut(member) {
   if (!state.screen || !state.members.has(member.id)) return;
   // Recebe pelo ajudante (relay.js): nem abre nem fecha a cópia direta aqui.
   if (isRelayedViewer(member)) return;
+  // Recebe pelo servidor (sfu.js): a cópia direta não é mais precisa.
+  if (isSfuViewer(member)) {
+    if (member.screenOut) {
+      const call = member.screenOut;
+      member.screenOut = null;
+      call.close();
+      retuneScreen();
+    }
+    return;
+  }
   const wants = member.onDemand ? !!member.watchingIds?.includes(state.myId) : true;
   if (wants) sendScreenTo(member);
   else if (member.screenOut && member.onDemand) {
@@ -1924,12 +1948,18 @@ function attachScreenIn(member, call) {
   member.screenIn = call;
   watchPath(call.peerConnection, 'tela recebida', member);
   call.on('stream', (stream) => {
+    if (sfuTakesDirect(member)) return; // sfu.js: já vejo pelo servidor
     registerScreen(member.id, `Tela de ${member.name}`, stream, true);
     renderSeat(member);
     if (state.helping?.streamer === member.id) syncRelayOut();
   });
   call.on('close', () => {
     if (member.screenIn !== call) return;
+    // Quem transmite fechou a cópia direta porque recebo pelo servidor.
+    if (member.sfuIn?.stream && !member.sfuIn.ending) {
+      member.screenIn = null;
+      return;
+    }
     if (call.metadata?.relayOf) relayInClosed(member, call);
     // Sem a cópia de quem transmite, não tenho o que repassar.
     if (state.helping?.streamer === member.id) stopHelping();
@@ -2075,7 +2105,7 @@ async function rxDiag() {
   for (const id of watchedIds()) {
     if (id === state.myId) continue;
     const member = state.members.get(id);
-    const pc = member?.screenIn?.peerConnection;
+    const pc = member?.sfuIn?.pc ?? member?.screenIn?.peerConnection;
     if (!pc || pc.connectionState !== 'connected') continue;
     const cur = await rxSnapshot(pc);
     const prev = rxDiagPrev.get(id);
@@ -2100,6 +2130,7 @@ async function rxDiag() {
       fs: !!document.fullscreenElement,
       compat: videoCompat.active || undefined,
       sw: videoCompat.sw.active || undefined,
+      via: member.sfuIn?.pc === pc ? 'servidor' : undefined,
       fps: Math.round(decoded / secs),
       dropped,
       freezes,
@@ -2133,6 +2164,8 @@ function detachScreenIn(member) {
 }
 
 function closeScreenIn(member) {
+  closeSfuIn(member); // sfu.js
+  member.sfuPub = null;
   const call = member.screenIn;
   member.screenIn = null;
   call?.close();
@@ -2486,6 +2519,8 @@ function tune(id) {
   syncScreenAudio(id);
   updateLiveRail();
   sendWatching();
+  const m = state.members.get(id);
+  if (m) syncSfuIn(m); // sfu.js
 }
 
 function untune(id) {
@@ -2497,6 +2532,8 @@ function untune(id) {
   syncScreenAudio(id);
   updateLiveRail();
   sendWatching();
+  const m = state.members.get(id);
+  if (m) syncSfuIn(m); // sfu.js
 }
 
 // O som de cada transmissão aberta toca num <audio> próprio desde a

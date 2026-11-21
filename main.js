@@ -388,6 +388,38 @@ async function turnServers() {
   return [];
 }
 
+// ---------- SFU da Cloudflare (tela pra 3+ pessoas, renderer/sfu.js) ----------
+// O segredo do app de SFU fica aqui (turn.json → cloudflare.sfuAppId /
+// sfuAppSecret); o renderer só pede as operações, e só nestes caminhos.
+function sfuConfig() {
+  const c = readTurnConfig()?.cloudflare;
+  return c?.sfuAppId && c?.sfuAppSecret ? c : null;
+}
+const SFU_PATHS = [/^sessions\/new$/, /^sessions\/[\w-]{8,64}(\/tracks\/(new|close|update)|\/renegotiate)?$/];
+
+ipcMain.handle('sfu:available', () => !!sfuConfig());
+ipcMain.handle('sfu:api', async (_e, method, apiPath, body) => {
+  const cfg = sfuConfig();
+  if (!cfg) return { ok: false, status: 0, data: { errorCode: 'no_sfu' } };
+  if (!['GET', 'POST', 'PUT'].includes(method) || typeof apiPath !== 'string' || !SFU_PATHS.some((r) => r.test(apiPath))) {
+    return { ok: false, status: 0, data: { errorCode: 'bad_path' } };
+  }
+  try {
+    const res = await fetch(`https://rtc.live.cloudflare.com/v1/apps/${encodeURIComponent(cfg.sfuAppId)}/${apiPath}`, {
+      method,
+      headers: { authorization: `Bearer ${cfg.sfuAppSecret}`, 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const text = await res.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { data = { errorDescription: text.slice(0, 200) }; }
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    return { ok: false, status: 0, data: { errorCode: 'network', errorDescription: err.message } };
+  }
+});
+
 ipcMain.handle('ice:servers', async () => {
   if (iceCache && iceCache.until > Date.now()) return iceCache.servers;
   let turn = [];

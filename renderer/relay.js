@@ -37,7 +37,8 @@ function isRelayedViewer(member) {
 
 function handleRelayOffer(member) {
   const screen = state.screen;
-  const ok = screen && member.relayOk && member.watchingIds?.includes(state.myId);
+  // Com o servidor ligado (sfu.js) o repasse já é dele.
+  const ok = screen && !screen.sfu && member.relayOk && member.watchingIds?.includes(state.myId);
   if (!ok || (screen.relay && screen.relay.helper !== member.id)) {
     member.conn?.send({ type: 'relay-busy' });
     return;
@@ -57,7 +58,7 @@ function updateRelay(force = false) {
   const r = screen?.relay;
   if (!r) return;
   const next = [...state.members.values()]
-    .filter((m) => m.id !== r.helper && m.relayOk && m.watchingIds?.includes(state.myId) && !r.excluded.has(m.id))
+    .filter((m) => m.id !== r.helper && m.relayOk && m.watchingIds?.includes(state.myId) && !r.excluded.has(m.id) && !isSfuViewer(m))
     .slice(0, RELAY_MAX_VIEWERS)
     .map((m) => m.id);
   const added = next.filter((id) => !r.viewers.has(id));
