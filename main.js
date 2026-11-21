@@ -28,6 +28,13 @@ const videoCompatActive = fs.existsSync(VIDEO_COMPAT_FILE);
 // (disable-direct-composition-video-overlays) não faz mais nada no Electron 45.
 if (videoCompatActive) app.commandLine.appendSwitch('disable_direct_composition_video_overlays');
 
+// Decodificar pelo processador: segundo degrau, quando a tela cheia trava
+// mesmo com o vídeo compatível (Boris, 0.10.12: decodificador D3D11 da placa
+// parando 5–50 s ao entrar/ficar em tela cheia). Também só vale ao reabrir.
+const VIDEO_SW_FILE = path.join(app.getPath('userData'), 'video-sw-decode');
+const videoSwActive = fs.existsSync(VIDEO_SW_FILE);
+if (videoSwActive) app.commandLine.appendSwitch('disable-accelerated-video-decode');
+
 // Uma instância só: abrir o atalho com o app na bandeja traz a janela de
 // volta. Perfis de teste (--profile) ficam livres pra abrir várias.
 const gotLock = !!profileArg || app.requestSingleInstanceLock();
@@ -272,6 +279,16 @@ ipcMain.handle('video-compat:set', (_e, on) => {
     console.warn('video-compat', err);
   }
   return { enabled: fs.existsSync(VIDEO_COMPAT_FILE), active: videoCompatActive };
+});
+ipcMain.handle('video-sw:get', () => ({ enabled: fs.existsSync(VIDEO_SW_FILE), active: videoSwActive }));
+ipcMain.handle('video-sw:set', (_e, on) => {
+  try {
+    if (on) fs.writeFileSync(VIDEO_SW_FILE, new Date().toISOString());
+    else fs.rmSync(VIDEO_SW_FILE, { force: true });
+  } catch (err) {
+    console.warn('video-sw', err);
+  }
+  return { enabled: fs.existsSync(VIDEO_SW_FILE), active: videoSwActive };
 });
 
 // Uso total da CPU do PC (0–1) desde a última pergunta. Quem transmite usa

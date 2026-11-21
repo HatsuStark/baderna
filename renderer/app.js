@@ -1950,20 +1950,33 @@ function attachScreenIn(member, call) {
 const FS_STALL_DECODE_MS = 40;
 const FS_STALL_DROPPED = 20;
 const FS_STALLS_TO_ENABLE = 2;
-const videoCompat = { enabled: false, active: false, stalls: 0, inStall: false };
+// Segundo degrau (0.10.13): com o compatível já valendo e a tela cheia ainda
+// travando 2 vezes, passa a decodificar pelo processador (sw), também ao reabrir.
+const videoCompat = { enabled: false, active: false, stalls: 0, inStall: false, sw: { enabled: false, active: false } };
+
+function renderFixStatus(id, fix) {
+  const status = $(id);
+  status.hidden = fix.enabled === fix.active;
+  status.textContent = fix.enabled ? 'Liga quando o Baderna for reaberto.' : 'Desliga quando o Baderna for reaberto.';
+}
 
 function renderVideoCompat() {
   $('video-compat').checked = videoCompat.enabled;
-  const status = $('video-compat-status');
-  const pending = videoCompat.enabled !== videoCompat.active;
-  status.hidden = !pending;
-  status.textContent = videoCompat.enabled ? 'Liga quando o Baderna for reaberto.' : 'Desliga quando o Baderna for reaberto.';
+  renderFixStatus('video-compat-status', videoCompat);
+  $('video-sw').checked = videoCompat.sw.enabled;
+  renderFixStatus('video-sw-status', videoCompat.sw);
   $('screen-view').classList.toggle('fs-compat', videoCompat.enabled || videoCompat.stalls > 0);
 }
 
 async function setVideoCompat(on) {
   const res = await window.baderna?.setVideoCompat?.(on).catch(() => null);
   if (res) Object.assign(videoCompat, res);
+  renderVideoCompat();
+}
+
+async function setVideoSw(on) {
+  const res = await window.baderna?.setVideoSw?.(on).catch(() => null);
+  if (res) videoCompat.sw = res;
   renderVideoCompat();
 }
 
@@ -1977,9 +1990,19 @@ function noteFullscreenDecode(decodeMs, dropped) {
   if (videoCompat.inStall) return;
   videoCompat.inStall = true;
   videoCompat.stalls++;
-  logEvent('tela cheia: decodificador travou', { vez: videoCompat.stalls, decodeMs: Math.round(decodeMs), dropped, compat: videoCompat.active });
+  logEvent('tela cheia: decodificador travou', {
+    vez: videoCompat.stalls, decodeMs: Math.round(decodeMs), dropped,
+    compat: videoCompat.active, sw: videoCompat.sw.active || undefined,
+  });
   renderVideoCompat(); // paliativo já na primeira vez
-  if (videoCompat.stalls !== FS_STALLS_TO_ENABLE || videoCompat.enabled || videoCompat.active) return;
+  if (videoCompat.stalls !== FS_STALLS_TO_ENABLE) return;
+  if (videoCompat.active && !videoCompat.sw.enabled && !videoCompat.sw.active) {
+    setVideoSw(true);
+    logEvent('vídeo pelo processador: ligado sozinho');
+    addSystem('🛠️ Sua tela cheia continuou travando. Na próxima vez que abrir o Baderna, o vídeo vai ser decodificado pelo processador em vez da placa (dá pra desligar nas configurações).');
+    return;
+  }
+  if (videoCompat.enabled || videoCompat.active) return;
   setVideoCompat(true);
   logEvent('vídeo compatível: ligado sozinho');
   addSystem('🛠️ Sua tela cheia tava travando. Na próxima vez que abrir o Baderna, ela vai usar o modo de vídeo compatível (dá pra desligar nas configurações).');
@@ -1990,7 +2013,13 @@ window.baderna?.videoCompat?.().then((res) => {
   if (videoCompat.active) logEvent('vídeo compatível: ativo');
   renderVideoCompat();
 }).catch(() => {});
+window.baderna?.videoSw?.().then((res) => {
+  if (res) videoCompat.sw = res;
+  if (videoCompat.sw.active) logEvent('vídeo pelo processador: ativo');
+  renderVideoCompat();
+}).catch(() => {});
 $('video-compat').addEventListener('change', () => setVideoCompat($('video-compat').checked));
+$('video-sw').addEventListener('change', () => setVideoSw($('video-sw').checked));
 
 // ---------- Diagnóstico de quem assiste (vai pro baderna.log) ----------
 // "Trava em tela cheia": a cada 5 s compara as estatísticas da tela recebida.
@@ -2025,6 +2054,7 @@ async function rxSnapshot(pc) {
         vLost: r.packetsLost ?? 0, vRecv: r.packetsReceived ?? 0,
         vDecodeS: r.totalDecodeTime ?? 0, vJbS: r.jitterBufferDelay ?? 0, vJbN: r.jitterBufferEmittedCount ?? 0,
         w: r.frameWidth, h: r.frameHeight, dec: r.decoderImplementation, hw: r.powerEfficientDecoder,
+        codecId: r.codecId,
       });
     } else if (r.type === 'inbound-rtp' && r.kind === 'audio') {
       Object.assign(snap, {
@@ -2035,6 +2065,7 @@ async function rxSnapshot(pc) {
       snap.rtt = r.currentRoundTripTime;
     }
   });
+  snap.codec = report.get(snap.codecId)?.mimeType?.split('/')[1];
   return snap;
 }
 
@@ -2068,6 +2099,7 @@ async function rxDiag() {
     logEvent(bad ? 'tela engasgou' : 'tela ok', shortId(id), {
       fs: !!document.fullscreenElement,
       compat: videoCompat.active || undefined,
+      sw: videoCompat.sw.active || undefined,
       fps: Math.round(decoded / secs),
       dropped,
       freezes,
@@ -2079,6 +2111,7 @@ async function rxDiag() {
       jitterMs: cur.aJitter !== undefined ? Math.round(cur.aJitter * 1000) : undefined,
       rttMs: cur.rtt !== undefined ? Math.round(cur.rtt * 1000) : undefined,
       res: cur.w ? `${cur.w}x${cur.h}` : undefined,
+      codec: cur.codec,
       dec: cur.dec,
       hw: cur.hw,
       oculto: state.windowHidden || undefined,
