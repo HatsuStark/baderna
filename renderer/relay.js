@@ -243,7 +243,7 @@ async function adaptRelay() {
       if (!sender) continue;
       const a = adaptOf(sender);
       if (!a.base) continue; // tuneRelayCall ainda não passou por aqui
-      const stats = await screenSenderStats(sender);
+      const stats = await screenSenderStats(sender, { withCpu: true });
       if (state.helping !== h || !stats) continue;
       if (!adaptStep(a, stats, top, now, (level) => relayStep(level, rel.mode).factor)) continue;
       logEvent('ajuda: degrau', state.members.get(id)?.name ?? '?', shortId(id), { degrau: a.level, motivo: stats.reason });

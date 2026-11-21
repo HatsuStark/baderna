@@ -1497,16 +1497,28 @@ function updateShareLabel() {
 
 // ---------- Ajuste automático da tela ----------
 // Cada pessoa assistindo tem um degrau de qualidade. A cada 2 s olha as
-// estatísticas da cópia que vai pra ela: limitada por banda ou CPU por 6 s,
-// desce um degrau; folgada por um bom tempo, sobe. Filme perde resolução
-// primeiro (mantém a fluidez); texto perde fps primeiro (mantém a nitidez).
-// Tudo em silêncio, sem aviso no chat. Upload apertado limita todas as cópias, então todas descem juntas;
-// download ruim de um amigo só derruba a cópia dele.
+// estatísticas da cópia que vai pra ela: banda da conexão abaixo do que o
+// degrau pede por 6 s, desce um degrau; folgada por um bom tempo, sobe. Filme
+// perde resolução primeiro (mantém a fluidez); texto perde fps primeiro
+// (mantém a nitidez). Tudo em silêncio, sem aviso no chat. Upload apertado
+// limita todas as cópias, então todas descem juntas; download ruim de um
+// amigo só derruba a cópia dele. CPU de quem transmite é com o "PC pesado"
+// (abaixo), não com o degrau de cada cópia.
+//
+// 0.10.12: antes contava qualityLimitationReason 'bandwidth'/'cpu' como
+// limitada. O próprio teto de bitrate do degrau faz o WebRTC dizer
+// 'bandwidth' (QP alto), então cada descida puxava a próxima até o fundo, e
+// as esperas dobrando (até 8 min) seguravam lá: depois de um tempo todo mundo
+// via a tela borrada.
 
 const ADAPT_INTERVAL_MS = 2000;
 const ADAPT_DOWN_AFTER = 3;       // amostras limitadas seguidas pra descer
 const ADAPT_UP_AFTER = 8;         // amostras folgadas seguidas pra subir
 const ADAPT_UP_HOLD_MS = 30_000;  // espera depois de descer; dobra a cada ida e volta
+const ADAPT_MAX_BOUNCES = 2;      // espera máxima: 30 s × 4 = 2 min
+const ADAPT_CALM_RESET_MS = 10 * 60_000; // 10 min sem descer: esquece as idas e voltas
+const ADAPT_STARVED = 0.85;       // banda estimada < 85% do teto do degrau = apertada
+const ADAPT_LOG_EVERY_MS = 5 * 60_000; // resumo das cópias no baderna.log
 const ADAPT_LADDERS = {
   motion: [{ scale: 1 }, { scale: 1.5 }, { scale: 2, fps: 30 }, { scale: 3, fps: 24 }],
   detail: [{ scale: 1 }, { scale: 1, fps: 15 }, { scale: 1.5, fps: 10 }, { scale: 2, fps: 8 }],
@@ -1700,12 +1712,13 @@ function adaptStep(a, stats, top, now, factorOf) {
     a.lastDown = now;
     return true;
   }
+  if (a.bounces && a.lastDown && now - a.lastDown > ADAPT_CALM_RESET_MS) a.bounces = 0;
   if (a.good >= ADAPT_UP_AFTER && a.level > 0 && now - a.lastDown > ADAPT_UP_HOLD_MS * 2 ** a.bounces) {
     // Só sobe se a estimativa de banda da conexão comporta o degrau de cima.
-    if (stats.available && stats.available < a.base * factorOf(a.level - 1) * 1.2) return false;
+    if (stats.available && stats.available < a.base * factorOf(a.level - 1) * 1.1) return false;
     a.level--;
     a.good = 0;
-    if (a.lastDown) a.bounces = Math.min(4, a.bounces + 1);
+    if (a.lastDown) a.bounces = Math.min(ADAPT_MAX_BOUNCES, a.bounces + 1);
     return true;
   }
   return false;
@@ -1729,6 +1742,7 @@ async function adaptCopies(screen) {
   const now = Date.now();
   const top = adaptLadder().length - 1;
   let changed = false;
+  const summary = [];
   for (const m of state.members.values()) {
     const pc = m.screenOut?.peerConnection;
     if (pc?.connectionState !== 'connected') continue;
@@ -1744,16 +1758,32 @@ async function adaptCopies(screen) {
     const stats = await screenSenderStats(sender);
     if (state.screen !== screen) return;
     if (!stats) continue;
+    summary.push(`${m.name ?? '?'} d${a.level} ${mbps(stats.sentBps)}/${mbps(stats.available)} ${stats.reason ?? '-'} ${stats.res}`);
+    const before = a.level;
     if (!adaptStep(a, stats, top, now, (level) => ladderStep(level).factor)) continue;
+    logEvent('tela: degrau', m.name ?? '?', shortId(m.id), {
+      de: before, para: a.level, qualidade: ladderStep(a.level).label,
+      bandaMbps: +(stats.available / 1e6).toFixed(1), motivo: stats.reason,
+    });
     await updateSender(sender, (params) => applyAdaptLevel(params, a));
     changed = true;
+  }
+  if (summary.length && now - (screen.lastAdaptLog ?? 0) > ADAPT_LOG_EVERY_MS) {
+    screen.lastAdaptLog = now;
+    const cap = captureOf(screen);
+    logEvent('tela: resumo', `captura ${cap.height}p${cap.frameRate} ·`, summary.join(', '));
   }
   if (changed && state.screen === screen) updateShareLabel();
 }
 
 // O que o ajuste olha numa cópia da tela. Função separada pra dar pra
-// simular conexão ruim nos testes.
-async function screenSenderStats(sender) {
+// simular conexão ruim nos testes. Apertada = a banda estimada da conexão não
+// alcança o teto de bitrate do degrau. qualityLimitationReason sozinho não
+// serve: o próprio teto faz o WebRTC dizer 'bandwidth'. withCpu: o ajudante
+// (relay.js) não tem o "PC pesado", então lá CPU conta por cópia.
+const sentPrev = new WeakMap(); // RTCRtpSender -> { bytes, t }
+
+async function screenSenderStats(sender, { withCpu = false } = {}) {
   const report = await sender.getStats().catch(() => null);
   if (!report) return null;
   let out = null;
@@ -1764,7 +1794,21 @@ async function screenSenderStats(sender) {
   });
   if (!out) return null;
   const reason = out.qualityLimitationReason;
-  return { limited: reason === 'bandwidth' || reason === 'cpu', reason, available };
+  const cap = sender.getParameters().encodings?.[0]?.maxBitrate ?? 0;
+  // Os dois juntos: cena parada manda pouco e a estimativa pode cair sem a
+  // rede estar ruim; aí o WebRTC não diz 'bandwidth'.
+  const starved = reason === 'bandwidth' && (!available || !cap || available < cap * ADAPT_STARVED);
+  const prev = sentPrev.get(sender);
+  const cur = { bytes: out.bytesSent ?? 0, t: out.timestamp ?? Date.now() };
+  sentPrev.set(sender, cur);
+  const sentBps = prev && cur.t > prev.t ? (8000 * (cur.bytes - prev.bytes)) / (cur.t - prev.t) : 0;
+  return {
+    limited: starved || (withCpu && reason === 'cpu'),
+    reason,
+    available,
+    sentBps,
+    res: out.frameHeight ? `${out.frameHeight}p${Math.round(out.framesPerSecond ?? 0)}` : '?',
+  };
 }
 
 function updateShareEstimate() {
