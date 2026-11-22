@@ -471,7 +471,8 @@ function wireMainPeer() {
         return;
       }
       // Só recebe. Responde na ordem de codec de quem manda: é a ordem da resposta que vale.
-      const codecs = sanitizeCodecOrder(call.metadata.codecs);
+      // Se a placa travou com a tela dessa pessoa, VP8 na frente (screen-redo).
+      const codecs = sanitizeCodecOrder(owner.vp8Fallback && !relayOf ? ['VP8'] : call.metadata.codecs);
       call.answer(undefined, { sdpTransform: (sdp) => opusStereo(preferVideoCodecs(sdp, codecs)) });
       attachScreenIn(owner, call);
       return;
@@ -623,7 +624,7 @@ function attachConn(member, conn) {
     sendMoviesTo(member);
     radioConnOpen(member, conn);
     conn.send({ type: 'watching', ids: [...state.tuned] });
-    conn.send({ type: 'caps', ondemand: true, sounds: true, relay: true, sfu: state.sfuAvailable });
+    conn.send({ type: 'caps', ondemand: true, sounds: true, relay: true, sfu: state.sfuAvailable, redo: true });
     if (state.screen) {
       conn.send({ type: 'screen-live' });
       if (state.previews.has(state.myId)) conn.send({ type: 'preview', img: state.previews.get(state.myId) });
@@ -847,6 +848,7 @@ function handleMessage(member, msg) {
       member.onDemand = !!msg.ondemand;
       member.relayOk = !!msg.relay;
       member.sfuOk = !!msg.sfu;
+      member.redoOk = !!msg.redo;
       if (state.screen) {
         syncScreenOut(member);
         updateSfu();
@@ -861,6 +863,9 @@ function handleMessage(member, msg) {
       break;
     case 'movies':
       handleMoviesMessage(msg);
+      break;
+    case 'screen-redo':
+      redoScreenTo(member);
       break;
     case 'watching':
       member.watchingIds = Array.isArray(msg.ids) ? msg.ids.filter((x) => typeof x === 'string').slice(0, 8) : [];
@@ -1947,6 +1952,23 @@ function sendScreenTo(member) {
   });
 }
 
+// Quem assiste pediu a cópia de novo (screen-redo): fecha e liga outra vez.
+// Quem decide o codec é a resposta de quem assiste, que vem com VP8 na frente.
+const SCREEN_REDO_MIN_MS = 10_000;
+
+function redoScreenTo(member) {
+  if (!state.screen || !member.screenOut || isRelayedViewer(member)) return;
+  const now = performance.now();
+  if (now - (member.screenRedoAt ?? -Infinity) < SCREEN_REDO_MIN_MS) return;
+  member.screenRedoAt = now;
+  const old = member.screenOut;
+  member.screenOut = null;
+  old.close();
+  logEvent('tela: refeita a pedido', member.name, shortId(member.id));
+  sendScreenTo(member);
+  retuneScreen();
+}
+
 function attachScreenIn(member, call) {
   member.screenIn?.close();
   member.screenIn = call;
@@ -2066,6 +2088,32 @@ function noteWindowDecode(decodeMs, freezes, hw) {
   addSystem('🛠️ A tela que você assiste tava engasgando na sua placa de vídeo. Na próxima vez que abrir o Baderna, o vídeo vai ser decodificado pelo processador (dá pra desligar nas configurações).');
 }
 
+// Tela direta travando com a placa decodificando e sem perda de rede: pede a
+// cópia dessa pessoa de novo em VP8, que o processador decodifica leve em
+// qualquer PC. Só pra essa transmissão, sem reiniciar e sem mexer nos outros.
+// Travadas curtas (tela parada mandando pouco quadro) não contam.
+const DIRECT_STALL_FREEZE_MS = 1000;
+const DIRECT_STALL_SAMPLES = 3;          // amostras de 5 s ruins…
+const DIRECT_STALL_WINDOW_MS = 60_000;   // …dentro de 1 min
+
+function noteDirectStall(member, s) {
+  if (member.vp8Fallback || !member.redoOk || !s.hw || s.codec === 'VP8') return;
+  if (member.screenIn?.metadata?.relayOf || s.lostPct >= 1) return;
+  const stalled = s.freezeMs >= DIRECT_STALL_FREEZE_MS || s.decodeMs >= WIN_SLOW_DECODE_MS
+    || s.dropped > Math.max(10, s.decoded * 0.1);
+  if (!stalled) return;
+  const now = performance.now();
+  const at = (member.directStallAt ??= []);
+  at.push(now);
+  while (at.length && now - at[0] > DIRECT_STALL_WINDOW_MS) at.shift();
+  if (at.length < DIRECT_STALL_SAMPLES) return;
+  at.length = 0;
+  member.vp8Fallback = true;
+  member.conn?.send({ type: 'screen-redo' });
+  logEvent('tela: pedi em VP8', member.name, shortId(member.id), { codec: s.codec, freezeMs: s.freezeMs, decodeMs: +s.decodeMs.toFixed(1) });
+  addSystem(`🛠️ A tela de ${member.name} tava travando na sua placa de vídeo. Pedi em outro formato (VP8), decodificado pelo processador.`);
+}
+
 // Última saída da tela cheia: a amostra de 5 s que pegou um trecho em tela
 // cheia conta como tela cheia (quem trava costuma sair antes da amostra).
 let fullscreenLeftAt = -Infinity;
@@ -2159,6 +2207,11 @@ async function rxDiag() {
     const fsInSample = !!document.fullscreenElement || fullscreenLeftAt > prev.at;
     if (fsInSample) noteFullscreenDecode(decodeMs, dropped, decoded);
     else if (!state.windowHidden) noteWindowDecode(decodeMs, freezes, cur.hw);
+    const lostPct = recv + lost > 0 ? +((100 * lost) / (recv + lost)).toFixed(1) : 0;
+    const freezeMs = Math.round(d('vFreezeS') * 1000);
+    if (!state.windowHidden && member.screenIn?.peerConnection === pc) {
+      noteDirectStall(member, { hw: cur.hw, codec: cur.codec, freezeMs, decodeMs, dropped, decoded, lostPct });
+    }
     if (!bad && !summary) continue;
     logEvent(bad ? 'tela engasgou' : 'tela ok', shortId(id), {
       fs: !!document.fullscreenElement,
@@ -2168,10 +2221,10 @@ async function rxDiag() {
       fps: Math.round(decoded / secs),
       dropped,
       freezes,
-      freezeMs: Math.round(d('vFreezeS') * 1000),
+      freezeMs,
       decodeMs: +decodeMs.toFixed(1),
       bufferMs: d('vJbN') ? Math.round((1000 * d('vJbS')) / d('vJbN')) : 0,
-      lostPct: recv + lost > 0 ? +((100 * lost) / (recv + lost)).toFixed(1) : 0,
+      lostPct,
       somRemendado: +concealPct.toFixed(1),
       jitterMs: cur.aJitter !== undefined ? Math.round(cur.aJitter * 1000) : undefined,
       rttMs: cur.rtt !== undefined ? Math.round(cur.rtt * 1000) : undefined,
