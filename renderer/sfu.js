@@ -30,8 +30,13 @@ const SFU_LAYERS = [
   { rid: 'q', scale: 4, share: 0.12 },
 ];
 
+// Desligado: a tela sai só do upload de quem transmite (direto). Com false o
+// app anuncia sfu:false no 'caps', não publica nem puxa do servidor, mesmo com
+// credenciais em turn.json. Mudar pra true religa o esquema híbrido.
+const SFU_ENABLED = false;
+
 state.sfuAvailable = false;
-window.baderna?.sfuAvailable?.().then((ok) => { state.sfuAvailable = !!ok; }).catch(() => {});
+if (SFU_ENABLED) window.baderna?.sfuAvailable?.().then((ok) => { state.sfuAvailable = !!ok; }).catch(() => {});
 
 async function sfuApi(method, apiPath, body) {
   const res = await window.baderna.sfuApi(method, apiPath, body);
