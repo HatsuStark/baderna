@@ -55,8 +55,12 @@ const SHARE_PRESETS = {
 const SCREEN_AUDIO_BITRATE = 128_000;
 
 // Bitrate pra mesma qualidade, relativo ao VP8 (base dos presets acima).
-const CODEC_EFFICIENCY = { AV1: 0.55, H265: 0.6, VP9: 0.65, H264: 0.85, VP8: 1 };
-const CODEC_FALLBACK_ORDER = ['AV1', 'H265', 'VP9', 'H264', 'VP8'];
+// Sem H.265: o decodificador da placa travava a imagem em vários PCs (só
+// destravava decodificando pelo processador, que não tem H.265 e caía pro
+// H.264). Fora da lista, quem recebe põe o H.265 no fim da resposta e ele
+// nunca é escolhido, mesmo que quem transmite esteja numa versão antiga.
+const CODEC_EFFICIENCY = { AV1: 0.55, VP9: 0.65, H264: 0.85, VP8: 1 };
+const CODEC_FALLBACK_ORDER = ['AV1', 'VP9', 'H264', 'VP8'];
 const MIN_SCREEN_BITRATE = 300_000;
 const VOICE_RESERVE_BPS = 50_000; // por pessoa: voz Opus + overhead
 const UPLOAD_HEADROOM = 0.8;      // usa só 80% do upload informado
@@ -1320,10 +1324,10 @@ function sanitizeCodecOrder(list) {
 
 // Primeiro os codecs que a placa codifica (do mais eficiente pro menos); sem
 // placa, VP8, o mais leve por software. Quem transmite codifica uma cópia por
-// pessoa, então AV1/H.265/VP9 por software (pesados) ficam por último: só
-// entram se o outro lado não aceitar nenhum dos de cima.
+// pessoa, então AV1/VP9 por software (pesados) ficam por último: só entram
+// se o outro lado não aceitar nenhum dos de cima.
 function videoCodecOrder(hw) {
-  const inHw = ['AV1', 'H265', 'H264'].filter((c) => hw[c]);
+  const inHw = ['AV1', 'H264'].filter((c) => hw[c]);
   return sanitizeCodecOrder([...inHw, 'VP8', 'H264', 'VP9']);
 }
 
@@ -1362,7 +1366,7 @@ async function probeHardwareEncoders() {
   const result = {};
   let measured = false;
   try {
-    for (const name of ['AV1', 'H265', 'H264']) {
+    for (const name of ['AV1', 'H264']) {
       const prefs = caps.filter((c) => c.mimeType.toUpperCase() === `VIDEO/${name}`);
       if (!prefs.length) continue;
       const hw = await encodesInHardware(track, prefs);
@@ -2011,8 +2015,10 @@ async function setVideoSw(on) {
 }
 
 // Conta episódios (amostras ruins seguidas valem um), não amostras.
-function noteFullscreenDecode(decodeMs, dropped) {
-  const stalled = decodeMs >= FS_STALL_DECODE_MS && dropped >= FS_STALL_DROPPED;
+// Travado = muitos quadros jogados fora com decodificação lenta ou quase nada
+// decodificado (decodificador parado: decodeMs vem 0 porque nenhum quadro saiu).
+function noteFullscreenDecode(decodeMs, dropped, decoded) {
+  const stalled = dropped >= FS_STALL_DROPPED && (decodeMs >= FS_STALL_DECODE_MS || decoded < dropped);
   if (!stalled) {
     videoCompat.inStall = false;
     return;
@@ -2037,6 +2043,32 @@ function noteFullscreenDecode(decodeMs, dropped) {
   logEvent('vídeo compatível: ligado sozinho');
   addSystem('🛠️ Sua tela cheia tava travando. Na próxima vez que abrir o Baderna, ela vai usar o modo de vídeo compatível (dá pra desligar nas configurações).');
 }
+
+// Fora da tela cheia: decodificador da placa lento de forma persistente
+// (Boris, 0.10.9: 20–80 ms por quadro com congelamentos de ~200 ms a cada
+// poucos segundos; pelo processador ficou 2–5 ms). Muitas amostras ruins numa
+// janela de tempo liga a decodificação pelo processador, valendo ao reabrir.
+const WIN_SLOW_DECODE_MS = 30;
+const WIN_SLOW_SAMPLES = 8;          // amostras de 5 s ruins…
+const WIN_SLOW_WINDOW_MS = 180_000;  // …dentro de 3 min
+const winSlowAt = [];
+
+function noteWindowDecode(decodeMs, freezes, hw) {
+  if (!hw || videoCompat.sw.enabled || videoCompat.sw.active) return;
+  if (decodeMs < WIN_SLOW_DECODE_MS || freezes < 1) return;
+  const now = performance.now();
+  winSlowAt.push(now);
+  while (winSlowAt.length && now - winSlowAt[0] > WIN_SLOW_WINDOW_MS) winSlowAt.shift();
+  if (winSlowAt.length < WIN_SLOW_SAMPLES) return;
+  winSlowAt.length = 0;
+  setVideoSw(true);
+  logEvent('vídeo pelo processador: ligado sozinho', { motivo: 'janela', decodeMs: Math.round(decodeMs) });
+  addSystem('🛠️ A tela que você assiste tava engasgando na sua placa de vídeo. Na próxima vez que abrir o Baderna, o vídeo vai ser decodificado pelo processador (dá pra desligar nas configurações).');
+}
+
+// Última saída da tela cheia: a amostra de 5 s que pegou um trecho em tela
+// cheia conta como tela cheia (quem trava costuma sair antes da amostra).
+let fullscreenLeftAt = -Infinity;
 
 window.baderna?.videoCompat?.().then((res) => {
   if (res) Object.assign(videoCompat, res);
@@ -2124,7 +2156,9 @@ async function rxDiag() {
     const recv = d('vRecv');
     const bad = freezes > 0 || dropped > decoded * 0.02 || concealPct > 2;
     const decodeMs = decoded ? (1000 * d('vDecodeS')) / decoded : 0;
-    if (document.fullscreenElement) noteFullscreenDecode(decodeMs, dropped);
+    const fsInSample = !!document.fullscreenElement || fullscreenLeftAt > prev.at;
+    if (fsInSample) noteFullscreenDecode(decodeMs, dropped, decoded);
+    else if (!state.windowHidden) noteWindowDecode(decodeMs, freezes, cur.hw);
     if (!bad && !summary) continue;
     logEvent(bad ? 'tela engasgou' : 'tela ok', shortId(id), {
       fs: !!document.fullscreenElement,
@@ -3912,6 +3946,7 @@ window.addEventListener('keydown', (e) => {
 document.addEventListener('fullscreenchange', () => {
   const fs = document.fullscreenElement;
   document.body.classList.toggle('is-fullscreen', !!fs);
+  if (!fs) fullscreenLeftAt = performance.now();
   logEvent(fs ? 'tela cheia: entrou' : 'tela cheia: saiu', `${screen.width}x${screen.height}@${devicePixelRatio}`);
   // Em tela cheia só o elemento da tela aparece: a fileira de bonecos vai
   // junto pra dentro dele (o mesmo nó, então aura e balanço seguem iguais).
